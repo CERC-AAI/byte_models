@@ -1,16 +1,29 @@
 #!/bin/bash
- #SBATCH -A CSC590
- #SBATCH -J byte-models-test
- #SBATCH -o /lustre/orion/csc590/scratch/george-adams/bgpt/logs/%x-%j.out
- #SBATCH -t 2:00:00
- #SBATCH -p batch
- #SBATCH -N 1
+#SBATCH -A CSC590
+#SBATCH -J 110m-wikipedia-ag-news
+#SBATCH -o /lustre/orion/csc590/scratch/george-adams/bgpt/logs/%x-%j.out
+#SBATCH -t 2:00:00
+#SBATCH -p batch
+#SBATCH -N 32
 
+# Define the source and target directories
+SRC_DIR="/lustre/orion/csc590/scratch/george-adams/bgpt"
+TARGET_DIR="/lustre/orion/csc590/scratch/george-adams/bgpt_${SLURM_JOB_NAME}"
 
-cd /lustre/orion/csc590/scratch/george-adams/bgpt
+# Copy the source directory to the target directory
+cp -r "$SRC_DIR" "$TARGET_DIR"
+
+cd "$TARGET_DIR"
 
 source activate /lustre/orion/csc590/scratch/george-adams/conda_envs/bgpt
 
 module load rocm/5.2
 
-torchrun --nproc_per_node=8 train-gen.py
+export MASTER_IP=`ip -f inet addr show hsn0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p' | head -1`
+
+cd "$TARGET_DIR"
+
+mkdir checkpoints
+mkdir dataloaders
+
+srun torchrun --nnodes=2 --nproc_per_node=8 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py
