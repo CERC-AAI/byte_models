@@ -208,6 +208,8 @@ def train_epoch():
                 'best_epoch': best_epoch,
                 'min_eval_loss': min_eval_loss
             }
+
+        if checkpoints_iters == CHECKPOINT_FREQUENCY:
             torch.save(checkpoint, f'{CHECKPOINT_PATH}/checkpoint{total_iters}.pth')
             torch.save(dataloader.state_dict(), f'{DATALOADER_PATH}/dataloader{total_iters}.pth')
             checkpoint_iters = 0
