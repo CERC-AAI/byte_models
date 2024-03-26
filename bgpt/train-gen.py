@@ -1,10 +1,13 @@
 import os
+import glob
 import time
 import torch
 import random
 import numpy as np
 from utils import *
+import argparse
 from config import *
+
 from tqdm import tqdm
 from copy import deepcopy
 from torch.cuda.amp import autocast, GradScaler
@@ -16,6 +19,8 @@ from torch.utils.data.distributed import DistributedSampler
 import wandb
 from config import *
 from torch.utils.data import Dataset, DataLoader
+
+first_launch = True
 
 wandb.init(project='byte_models', entity='George Adams', mode='offline')
 
@@ -90,6 +95,13 @@ if world_size > 1:
 scaler = GradScaler()
 is_autocast = True
 optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+
+
+def find_most_recent_file(directory, pattern="*.pth"):
+    file_paths = glob.glob(os.path.join(directory, pattern))
+    if file_paths:
+        return max(file_paths, key=os.path.getmtime)
+    return None
 
 
 def collate_batch(input_batches):
@@ -209,9 +221,9 @@ def train_epoch():
                 'min_eval_loss': min_eval_loss
             }
 
-        if checkpoints_iters == CHECKPOINT_FREQUENCY:
+        if checkpoint_iters == CHECKPOINT_FREQUENCY:
             torch.save(checkpoint, f'{CHECKPOINT_PATH}/checkpoint{total_iters}.pth')
-            torch.save(dataloader.state_dict(), f'{DATALOADER_PATH}/dataloader{total_iters}.pth')
+            # torch.save(dataloader.state_dict(), f'{DATALOADER_PATH}/dataloader{total_iters}.pth') # THIS doesn't work
             checkpoint_iters = 0
 
         checkpoint_iters += 1
@@ -258,16 +270,35 @@ if __name__ == "__main__":
     train_files = train_files[:train_batch_nums * batch_size]
     eval_files = eval_files[:eval_batch_nums * batch_size]
 
-    train_set = ByteDataset(train_files)
-    eval_set = ByteDataset(eval_files)
+    train_dataset = ByteDataset(train_files)
+    eval_dataset = ByteDataset(eval_files)
 
-    train_sampler = DistributedSampler(train_set, num_replicas=world_size, rank=local_rank)
-    eval_sampler = DistributedSampler(eval_set, num_replicas=world_size, rank=local_rank)
+    # Initialize DistributedSampler
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=local_rank)
+    eval_sampler = DistributedSampler(eval_dataset, num_replicas=world_size, rank=local_rank)
 
-    train_set = DataLoader(train_set, batch_size=batch_size, collate_fn=collate_batch, sampler=train_sampler,
-                           shuffle=(train_sampler is None))
-    eval_set = DataLoader(eval_set, batch_size=batch_size, collate_fn=collate_batch, sampler=eval_sampler,
-                          shuffle=(train_sampler is None))
+    # Load the most recent DataLoader state (if applicable)
+    # if args.first_launch != "True":
+    if not first_launch:
+        # For train_set, if you're saving states of the sampler, load it here
+        most_recent_train_dataloader_state = find_most_recent_file(DATALOADER_PATH, pattern="train_dataloader_*.pth")
+        if most_recent_train_dataloader_state:
+            # Assuming you have a mechanism to load the sampler's state
+            train_sampler_state = torch.load(most_recent_train_dataloader_state, map_location='cpu')
+            train_sampler.load_state_dict(train_sampler_state)
+            print(f"Loaded train sampler state from {most_recent_train_dataloader_state}")
+
+        # Similar logic could apply to eval_set if you have a stateful eval_sampler
+        most_recent_eval_dataloader_state = find_most_recent_file(DATALOADER_PATH, pattern="eval_dataloader_*.pth")
+        if most_recent_eval_dataloader_state:
+            # Load eval_sampler state if necessary
+            pass
+
+    # Initialize DataLoaders with potentially state-restored samplers
+    train_set = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch, sampler=train_sampler,
+                           shuffle=False)  # shuffle is False when using a sampler
+    eval_set = DataLoader(eval_dataset, batch_size=batch_size, collate_fn=collate_batch, sampler=eval_sampler,
+                          shuffle=False)
 
     lr_scheduler = get_scheduler(
         name="cosine",
@@ -305,7 +336,10 @@ if __name__ == "__main__":
 
     if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
         # Load checkpoint to CPU
-        checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
+        most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
+        if most_recent_checkpoint is not None:
+            WEIGHTS_PATH = most_recent_checkpoint
+            checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
 
         # Here, model is assumed to be on GPU
         # Load state dict to CPU model first, then move the model to GPU

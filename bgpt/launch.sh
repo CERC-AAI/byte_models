@@ -8,22 +8,18 @@
 
 # Define the source and target directories
 SRC_DIR="/lustre/orion/csc590/scratch/george-adams/bgpt"
-TARGET_DIR="/lustre/orion/csc590/scratch/george-adams/bgpt_${SLURM_JOB_NAME}"
 
-# Copy the source directory to the target directory
-cp -r "$SRC_DIR" "$TARGET_DIR"
+cd "$SRC_DIR"
 
-cd "$TARGET_DIR"
-
-source activate /lustre/orion/csc590/scratch/george-adams/conda_envs/bgpt
+source /lustre/orion/csc590/scratch/$(whoami)/miniconda3/etc/profile.d/conda.sh
+conda activate /lustre/orion/csc590/scratch/george-adams/conda_envs/bgpt
 
 module load rocm/5.2
 
 export MASTER_IP=`ip -f inet addr show hsn0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p' | head -1`
 
-cd "$TARGET_DIR"
-
-mkdir checkpoints
-mkdir dataloaders
+mkdir "$SLURM_JOB_NAME"
+mkdir "$SLURM_JOB_NAME"/checkpoints
+mkdir "$SLURM_JOB_NAME"/dataloaders
 
 srun torchrun --nnodes=2 --nproc_per_node=8 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py
