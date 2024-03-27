@@ -1,0 +1,24 @@
+train_folders:
+  - "/lustre/orion/csc590/scratch/george-adams/data/wikipedia/train_text3"
+  - "/lustre/orion/csc590/scratch/george-adams/data/ag_news/train_text2"
+eval_folders: []
+# base_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news"
+weights_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/16-nodes-scratch.pth"
+pre_weights_path: null
+logs_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/log.txt"
+checkpoint_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/checkpoints"
+dataloader_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/dataloaders"
+patch_size: 16
+patch_length: 1024
+byte_num_layers: 3
+patch_num_layers: 12
+hidden_size: 768
+num_epochs: 32
+learning_rate: 0.0001
+batch_size: 16
+accumulation_steps: 1
+patch_sampling_batch_size: 0
+load_from_checkpoint: false
+load_from_pre_checkpoint: false
+checkpoint_frequency: 20
+first_launch: true

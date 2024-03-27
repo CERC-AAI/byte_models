@@ -4,6 +4,7 @@ import time
 import torch
 import random
 import numpy as np
+import yaml
 from utils import *
 import argparse
 from config import *
@@ -17,32 +18,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
 import wandb
-from config import *
+# from config import *
 from torch.utils.data import Dataset, DataLoader
 
-first_launch = True
-
 wandb.init(project='byte_models', entity='George Adams', mode='offline')
-
-wandb.config.update({
-    "TRAIN_FOLDERS": TRAIN_FOLDERS,
-    "EVAL_FOLDERS": EVAL_FOLDERS,
-    # "PRE_WEIGHTS_PATH": PRE_WEIGHTS_PATH,
-    "WEIGHTS_PATH": WEIGHTS_PATH,
-    "LOGS_PATH": LOGS_PATH,
-    "PATCH_SIZE": PATCH_SIZE,
-    "PATCH_LENGTH": PATCH_LENGTH,
-    "BYTE_NUM_LAYERS": BYTE_NUM_LAYERS,
-    "PATCH_NUM_LAYERS": PATCH_NUM_LAYERS,
-    "HIDDEN_SIZE": HIDDEN_SIZE,
-    "NUM_EPOCHS": NUM_EPOCHS,
-    "LEARNING_RATE": LEARNING_RATE,
-    "BATCH_SIZE": BATCH_SIZE,
-    "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
-    "LOAD_FROM_CHECKPOINT": LOAD_FROM_CHECKPOINT,
-    "LOAD_FROM_PRE_CHECKPOINT": LOAD_FROM_PRE_CHECKPOINT
-    # Add any other configurations you'd like to track
-})
 
 # Set up distributed training
 world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
@@ -68,34 +47,6 @@ torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-
-batch_size = BATCH_SIZE
-
-patch_config = GPT2Config(num_hidden_layers=PATCH_NUM_LAYERS,
-                          max_length=PATCH_LENGTH,
-                          max_position_embeddings=PATCH_LENGTH,
-                          hidden_size=HIDDEN_SIZE,
-                          n_head=HIDDEN_SIZE // 64,
-                          vocab_size=1)
-byte_config = GPT2Config(num_hidden_layers=BYTE_NUM_LAYERS,
-                         max_length=PATCH_SIZE + 1,
-                         max_position_embeddings=PATCH_SIZE + 1,
-                         hidden_size=HIDDEN_SIZE,
-                         n_head=HIDDEN_SIZE // 64,
-                         vocab_size=256 + 1)
-model = bGPTLMHeadModel(patch_config, byte_config)
-model = model.to(device)
-
-# print parameter number
-print("Parameter Number: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
-
-if world_size > 1:
-    model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
-
-scaler = GradScaler()
-is_autocast = True
-optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-
 
 def find_most_recent_file(directory, pattern="*.pth"):
     file_paths = glob.glob(os.path.join(directory, pattern))
@@ -133,10 +84,12 @@ def list_files_in_directory(directories):
     return file_list
 
 
-def read_bytes(filename):
+def read_bytes(filename, 
+               patch_size, 
+               patch_length):
     ext = filename.split('.')[-1]
     ext = bytearray(ext, 'utf-8')
-    ext = [byte for byte in ext][:PATCH_SIZE]
+    ext = [byte for byte in ext][:patch_size]
 
     with open(filename, 'rb') as f:
         file_bytes = f.read()
@@ -145,27 +98,29 @@ def read_bytes(filename):
     for byte in file_bytes:
         bytes.append(byte)
 
-    if len(bytes) % PATCH_SIZE != 0:
-        bytes = bytes + [256] * (PATCH_SIZE - len(bytes) % PATCH_SIZE)
+    if len(bytes) % patch_size != 0:
+        bytes = bytes + [256] * (patch_size - len(bytes) % patch_size)
 
-    bos_patch = ext + [256] * (PATCH_SIZE - len(ext))
-    bytes = bos_patch + bytes + [256] * PATCH_SIZE
-    bytes = bytes[:PATCH_LENGTH * PATCH_SIZE]
-    masks = [1] * (len(bytes) // PATCH_SIZE)
+    bos_patch = ext + [256] * (patch_size - len(ext))
+    bytes = bos_patch + bytes + [256] * patch_size
+    bytes = bytes[:patch_length * patch_size]
+    masks = [1] * (len(bytes) // patch_size)
 
     return bytes, masks
 
 
 class ByteDataset(Dataset):
-    def __init__(self, filenames):
+    def __init__(self, filenames, patch_size, patch_length):
         self.filenames = filenames
+        self.patch_size = patch_size
+        self.patch_length = patch_length
 
     def __len__(self):
         return len(self.filenames)
 
     def __getitem__(self, idx):
         filename = self.filenames[idx]
-        file_bytes, file_masks = read_bytes(filename)
+        file_bytes, file_masks = read_bytes(filename, self.patch_size, self.patch_length)
 
         file_bytes = torch.tensor(file_bytes, dtype=torch.long)
         file_masks = torch.tensor(file_masks, dtype=torch.long)
@@ -174,7 +129,10 @@ class ByteDataset(Dataset):
 
 
 # call model with a batch of input
-def process_one_batch(batch):
+def process_one_batch(batch, 
+                      model, 
+                      world_size
+                      ):
     input_patches, input_masks = batch
     loss = model(input_patches, input_masks).loss
 
@@ -189,7 +147,19 @@ def process_one_batch(batch):
 
 
 # do one epoch for training
-def train_epoch():
+def train_epoch(model,
+                train_set, 
+                lr_scheduler, 
+                scaler,
+                optimizer,
+                epoch, 
+                best_epoch, 
+                min_eval_loss, 
+                batch_size, 
+                accumulation_steps, 
+                checkpoint_frequency, 
+                checkpoint_path):
+    
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     iter_idx = 1
@@ -198,10 +168,10 @@ def train_epoch():
     model.train()
 
     for batch in tqdm_train_set:
-        minibatches = split_into_minibatches(batch[0], batch[1], BATCH_SIZE // ACCUMULATION_STEPS)
+        minibatches = split_into_minibatches(batch[0], batch[1], batch_size // accumulation_steps)
         for minibatch in minibatches:
             with autocast():
-                loss = process_one_batch(minibatch) / ACCUMULATION_STEPS
+                loss = process_one_batch(minibatch, model, world_size) / accumulation_steps
             scaler.scale(loss).backward()
             total_train_loss += loss.item()
         scaler.step(optimizer)
@@ -211,7 +181,7 @@ def train_epoch():
         model.zero_grad(set_to_none=True)
         tqdm_train_set.set_postfix({str(global_rank) + '_train_loss': total_train_loss / iter_idx})
 
-        if iter_idx == CHECKPOINT_FREQUENCY:
+        if iter_idx == checkpoint_frequency:
             checkpoint = {
                 'model': model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -221,8 +191,8 @@ def train_epoch():
                 'min_eval_loss': min_eval_loss
             }
 
-        if checkpoint_iters == CHECKPOINT_FREQUENCY:
-            torch.save(checkpoint, f'{CHECKPOINT_PATH}/checkpoint{total_iters}.pth')
+        if checkpoint_iters == checkpoint_frequency:
+            torch.save(checkpoint, f'{checkpoint_path}/checkpoint{total_iters}.pth')
             # torch.save(dataloader.state_dict(), f'{DATALOADER_PATH}/dataloader{total_iters}.pth') # THIS doesn't work
             checkpoint_iters = 0
 
@@ -234,7 +204,11 @@ def train_epoch():
 
 
 # do one epoch for eval
-def eval_epoch():
+def eval_epoch(model,
+               eval_set, 
+               batch_size, 
+               accumulation_steps
+               ):
     tqdm_eval_set = tqdm(eval_set)
     total_eval_loss = 0
     iter_idx = 1
@@ -242,10 +216,10 @@ def eval_epoch():
 
     # Evaluate data for one epoch
     for batch in tqdm_eval_set:
-        minibatches = split_into_minibatches(batch[0], batch[1], BATCH_SIZE // ACCUMULATION_STEPS)
+        minibatches = split_into_minibatches(batch[0], batch[1], batch_size // accumulation_steps)
         for minibatch in minibatches:
             with torch.no_grad():
-                loss = process_one_batch(minibatch) / ACCUMULATION_STEPS
+                loss = process_one_batch(minibatch) / accumulation_steps
             total_eval_loss += loss.item()
         tqdm_eval_set.set_postfix({str(global_rank) + '_eval_loss': total_eval_loss / iter_idx})
         iter_idx += 1
@@ -253,9 +227,86 @@ def eval_epoch():
 
     return 0
 
+def read_config_from_yaml(yaml_file):
+    with open(yaml_file, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
 
-# train and eval
-if __name__ == "__main__":
+def main(args):
+    config = read_config_from_yaml(args.config)
+
+    TRAIN_FOLDERS = config.get("train_folders")
+    EVAL_FOLDERS = config.get("eval_folders")
+
+    WEIGHTS_PATH = config.get("weights_path")
+    PRE_WEIGHTS_PATH = config.get("pre_weights_path")
+    LOGS_PATH = config.get("logs_path")
+    CHECKPOINT_PATH = config.get("checkpoint_path")
+    DATALOADER_PATH = config.get("dataloader_path")
+
+    PATCH_SIZE = config.get("patch_size")
+    PATCH_LENGTH = config.get("patch_length")
+    BYTE_NUM_LAYERS = config.get("byte_num_layers")
+    PATCH_NUM_LAYERS = config.get("patch_num_layers")
+    HIDDEN_SIZE = config.get("hidden_size")
+
+    NUM_EPOCHS = config.get("num_epochs")
+    LEARNING_RATE = config.get("learning_rate")
+    BATCH_SIZE = config.get("batch_size")
+    ACCUMULATION_STEPS = config.get("accumulation_steps")
+    PATCH_SAMPLING_BATCH_SIZE = config.get("patch_sampling_batch_size")
+    LOAD_FROM_CHECKPOINT = config.get("load_from_checkpoint")
+    LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
+    CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
+
+    FIRST_LAUNCH = config.get("first_launch")
+
+    wandb.config.update({
+        "TRAIN_FOLDERS": TRAIN_FOLDERS,
+        "EVAL_FOLDERS": EVAL_FOLDERS,
+        # "PRE_WEIGHTS_PATH": PRE_WEIGHTS_PATH,
+        "WEIGHTS_PATH": WEIGHTS_PATH,
+        "LOGS_PATH": LOGS_PATH,
+        "PATCH_SIZE": PATCH_SIZE,
+        "PATCH_LENGTH": PATCH_LENGTH,
+        "BYTE_NUM_LAYERS": BYTE_NUM_LAYERS,
+        "PATCH_NUM_LAYERS": PATCH_NUM_LAYERS,
+        "HIDDEN_SIZE": HIDDEN_SIZE,
+        "NUM_EPOCHS": NUM_EPOCHS,
+        "LEARNING_RATE": LEARNING_RATE,
+        "BATCH_SIZE": BATCH_SIZE,
+        "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
+        "LOAD_FROM_CHECKPOINT": LOAD_FROM_CHECKPOINT,
+        "LOAD_FROM_PRE_CHECKPOINT": LOAD_FROM_PRE_CHECKPOINT
+        # Add any other configurations you'd like to track
+    })
+
+    batch_size = BATCH_SIZE
+
+    patch_config = GPT2Config(num_hidden_layers=PATCH_NUM_LAYERS,
+                            max_length=PATCH_LENGTH,
+                            max_position_embeddings=PATCH_LENGTH,
+                            hidden_size=HIDDEN_SIZE,
+                            n_head=HIDDEN_SIZE // 64,
+                            vocab_size=1)
+    byte_config = GPT2Config(num_hidden_layers=BYTE_NUM_LAYERS,
+                            max_length=PATCH_SIZE + 1,
+                            max_position_embeddings=PATCH_SIZE + 1,
+                            hidden_size=HIDDEN_SIZE,
+                            n_head=HIDDEN_SIZE // 64,
+                            vocab_size=256 + 1)
+    model = bGPTLMHeadModel(patch_config, byte_config)
+    model = model.to(device)
+
+    # print parameter number
+    print("Parameter Number: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+
+    if world_size > 1:
+        model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
+
+    scaler = GradScaler()
+    is_autocast = True
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     # load filenames under train and eval folder
     train_files = list_files_in_directory(TRAIN_FOLDERS)
@@ -270,8 +321,8 @@ if __name__ == "__main__":
     train_files = train_files[:train_batch_nums * batch_size]
     eval_files = eval_files[:eval_batch_nums * batch_size]
 
-    train_dataset = ByteDataset(train_files)
-    eval_dataset = ByteDataset(eval_files)
+    train_dataset = ByteDataset(train_files, PATCH_SIZE, PATCH_LENGTH)
+    eval_dataset = ByteDataset(eval_files, PATCH_SIZE, PATCH_LENGTH)
 
     # Initialize DistributedSampler
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=local_rank)
@@ -279,7 +330,7 @@ if __name__ == "__main__":
 
     # Load the most recent DataLoader state (if applicable)
     # if args.first_launch != "True":
-    if not first_launch:
+    if not FIRST_LAUNCH:
         # For train_set, if you're saving states of the sampler, load it here
         most_recent_train_dataloader_state = find_most_recent_file(DATALOADER_PATH, pattern="train_dataloader_*.pth")
         if most_recent_train_dataloader_state:
@@ -336,6 +387,7 @@ if __name__ == "__main__":
 
     if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
         # Load checkpoint to CPU
+        # TODO: Missing function. Is this supposed to be find_most_recent_file?
         most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
         if most_recent_checkpoint is not None:
             WEIGHTS_PATH = most_recent_checkpoint
@@ -370,8 +422,27 @@ if __name__ == "__main__":
         train_sampler.set_epoch(epoch)
         eval_sampler.set_epoch(epoch)
         print('-' * 21 + "Epoch " + str(epoch) + '-' * 21)
-        train_loss = train_epoch()
-        eval_loss = eval_epoch()
+
+        train_loss = train_epoch(model, 
+                                 train_set, 
+                                 lr_scheduler, 
+                                 scaler,
+                                 optimizer,
+                                 epoch, 
+                                 best_epoch, 
+                                 min_eval_loss, 
+                                 BATCH_SIZE, 
+                                 ACCUMULATION_STEPS, 
+                                 CHECKPOINT_FREQUENCY, 
+                                 CHECKPOINT_PATH
+                                 )
+        
+        eval_loss = eval_epoch(model,
+                               eval_set, 
+                               BATCH_SIZE, 
+                               ACCUMULATION_STEPS
+                               )
+
         if global_rank == 0:
             with open(LOGS_PATH, 'a') as f:
                 f.write("Epoch " + str(epoch) + "\ntrain_loss: " + str(train_loss) + "\neval_loss: " + str(
@@ -401,4 +472,14 @@ if __name__ == "__main__":
     if global_rank == 0:
         print("Best Eval Epoch : " + str(best_epoch))
         print("Min Eval Loss : " + str(min_eval_loss))
+
+
+
+# train and eval
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Training script for bGBT")
+    parser.add_argument("--train-config-path", type=str, required=True, help="Path to the config YAML file for training run")
+    args = parser.parse_args()
+
+    main(args)
 
