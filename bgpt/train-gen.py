@@ -233,7 +233,7 @@ def read_config_from_yaml(yaml_file):
     return config
 
 def main(args):
-    config = read_config_from_yaml(args.config)
+    config = read_config_from_yaml(args.train_config_path)
 
     TRAIN_FOLDERS = config.get("train_folders")
     EVAL_FOLDERS = config.get("eval_folders")
