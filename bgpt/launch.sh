@@ -25,4 +25,4 @@ mkdir "$SLURM_JOB_NAME"
 mkdir "$SLURM_JOB_NAME"/checkpoints
 mkdir "$SLURM_JOB_NAME"/dataloaders
 
-srun torchrun --nnodes=2 --nproc_per_node=8 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py ${CONFIG_PATH}
+srun torchrun --nnodes=2 --nproc_per_node=8 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py --train-config-path ${CONFIG_PATH}
