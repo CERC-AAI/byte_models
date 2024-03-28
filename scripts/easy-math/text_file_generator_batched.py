@@ -59,16 +59,16 @@ def merge_write(input_files, output_dir, max_examples_per_file, max_num_output_f
 
 
 # List of input file names
-input_files = ['/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/data/math-adder/2-digit/train.txt', 
-               '/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/data/math-adder/3-digit/train.txt',
-               '/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/data/math-adder/4-digit/train.txt',
-               '/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/data/math-adder/5-digit/train.txt',
+input_files = ['/lustre/orion/csc590/proj-shared/math-adder/2-digit-symbols/train.txt', 
+               '/lustre/orion/csc590/proj-shared/math-adder/3-digit-symbols/train.txt',
+               '/lustre/orion/csc590/proj-shared/math-adder/4-digit-symbols/train.txt',
+               '/lustre/orion/csc590/proj-shared/math-adder/5-digit-symbols/train.txt',
                ]
 
 # Output file name
-output_dir = '/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/data/math-adder/merged/train'
+output_dir = '/lustre/orion/csc590/proj-shared/math-adder/merged-symbols/train'
 Path(output_dir).mkdir(parents=True, exist_ok=True)
 # Will generate output files, each output file having examples interleaved from the various input files
-merge_write(input_files, output_dir, max_examples_per_file=600, max_num_output_files=1000000)
+merge_write(input_files, output_dir, max_examples_per_file=550, max_num_output_files=1000000)
 
 print("Files generated successfully!")

@@ -33,14 +33,16 @@ class AdditionDatasetGenerator():
         ndigit: Number of digits for each number that will be summed. Default is 2.
         test_ratio: Proportion of the total possible ndigit summation problems that will be in test. Default is 0.2
         reverse_answer: Reverse the answer number (since tokens are predicted left-to-right), this may ease the difficulty for the model
+        symbols: If True, will have + and = in the generated string. False by default.
     """
 
-    def __init__(self, ndigit=2, test_ratio=0.2, reverse_answer=True):
+    def __init__(self, ndigit=2, test_ratio=0.2, reverse_answer=True, symbols=False):
 
         # split up all addition problems into either training data or test data
         self.ndigit = ndigit
         self.test_ratio = test_ratio
         self.reverse_answer = reverse_answer
+        self.symbols = symbols
         # assert ndigit <= 4, "For ndigit > 4, it'll take a long time"
         assert test_ratio < 1.0, "Test ratio has to be less than 1"
 
@@ -76,7 +78,10 @@ class AdditionDatasetGenerator():
                     astr = f'%0{self.ndigit}d' % a
                     bstr = f'%0{self.ndigit}d' % b
                     cstr = (f'%0{self.ndigit+1}d' % c)[::-1] if self.reverse_answer else (f'%0{self.ndigit+1}d' % c)
-                    render = astr + bstr + cstr
+                    if self.symbols:
+                        render = astr + "+" + bstr + "=" + cstr
+                    else:
+                        render = astr + bstr + cstr
 
                     # Save to train file
                     if idx < num_train:
@@ -94,7 +99,11 @@ def main(args):
     reverse_ans = args.reverse
     ndigits = args.digits
     save_dir = args.save_dir + f"/{ndigits}-digit"
+    symbols = args.symbols
 
+    if symbols:
+        print("Output will have symbols + and =")
+        save_dir += "-symbols"
 
     if reverse_ans:
         print("Output number will be reversed.")
@@ -102,7 +111,7 @@ def main(args):
 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
-    ds = AdditionDatasetGenerator(ndigit=ndigits, test_ratio=0.2, reverse_answer=reverse_ans)
+    ds = AdditionDatasetGenerator(ndigit=ndigits, test_ratio=0.2, reverse_answer=reverse_ans, symbols=symbols)
     ds.generate_problems(save_dir=save_dir)    
 
 if __name__ == "__main__":
@@ -110,7 +119,8 @@ if __name__ == "__main__":
     parser.add_argument("--digits", type=int, required=True, default=2, help="Number of digits per number. Default is 2")
     parser.add_argument("--reverse", dest='reverse', action='store_true', help="Reverse answer number e.g. 23+12=53 instead of 35, due to left-to-right generation")
     parser.add_argument("--save-dir", type=str, required=True, help="Path to the output directory to save train.txt and test.txt")
-    parser.set_defaults(reverse=False)
+    parser.add_argument("--symbols", dest='symbols', action='store_true', help="To include symbol operators + and = in the generated string")
+    parser.set_defaults(reverse=False, symbols=False)
     args = parser.parse_args()
 
     main(args)
