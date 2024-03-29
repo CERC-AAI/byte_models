@@ -398,7 +398,7 @@ def main(args):
         # Load checkpoint to CPU
         # TODO: Missing function. Is this supposed to be find_most_recent_file?
         # most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
-        most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH)
+        most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH, pattern="checkpoint*.pth")
         if most_recent_checkpoint is not None:
             WEIGHTS_PATH = most_recent_checkpoint
             checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
