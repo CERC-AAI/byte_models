@@ -237,11 +237,13 @@ def main(args):
     TRAIN_FOLDERS = config.get("train_folders")
     EVAL_FOLDERS = config.get("eval_folders")
 
-    WEIGHTS_PATH = config.get("weights_path")
     PRE_WEIGHTS_PATH = config.get("pre_weights_path")
-    LOGS_PATH = config.get("logs_path")
-    CHECKPOINT_PATH = config.get("checkpoint_path")
-    DATALOADER_PATH = config.get("dataloader_path")
+
+    BASE_DIR = config.get("base_dir", None)
+    WEIGHTS_PATH = f'{BASE_DIR}/{config.get("weights_path")}'
+    LOGS_PATH = f'{BASE_DIR}/{config.get("logs_path")}'
+    CHECKPOINT_PATH = f'{BASE_DIR}/{config.get("checkpoint_path")}'
+    DATALOADER_PATH = f'{BASE_DIR}/{config.get("dataloader_path")}'
 
     PATCH_SIZE = config.get("patch_size")
     PATCH_LENGTH = config.get("patch_length")
@@ -264,6 +266,7 @@ def main(args):
 
     FIRST_LAUNCH = config.get("first_launch")
 
+    Path(BASE_DIR).mkdir(parents=True, exist_ok=True)
     Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
     Path(DATALOADER_PATH).mkdir(parents=True, exist_ok=True)
 

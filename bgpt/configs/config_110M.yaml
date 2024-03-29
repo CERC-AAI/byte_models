@@ -1,12 +1,12 @@
 train_folders:
   - "/lustre/orion/csc590/proj-shared/math-adder/merged-symbols/sample"
 eval_folders: []
-# base_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news"
-weights_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/weights.pth"
+base_dir: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit"
+weights_path: "weights.pth"
 pre_weights_path: null
-logs_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/log.txt"
-checkpoint_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/checkpoints"
-dataloader_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/dataloaders"
+logs_path: "log.txt"
+checkpoint_path: "checkpoints"
+dataloader_path: "dataloaders"
 patch_size: 16
 patch_length: 1024
 byte_num_layers: 3
