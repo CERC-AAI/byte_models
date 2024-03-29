@@ -3,7 +3,7 @@ import time
 import torch
 from utils import *
 from config import *
-from transformers import  GPT2Config
+from transformers import GPT2Config
 
 if torch.cuda.is_available():    
     device = torch.device("cuda")

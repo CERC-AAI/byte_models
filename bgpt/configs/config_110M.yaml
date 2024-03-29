@@ -1,13 +1,12 @@
 train_folders:
-  - "/lustre/orion/csc590/scratch/george-adams/data/wikipedia/train_text3"
-  - "/lustre/orion/csc590/scratch/george-adams/data/ag_news/train_text2"
+  - "/lustre/orion/csc590/proj-shared/math-adder/merged-symbols/sample"
 eval_folders: []
 # base_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news"
-weights_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/16-nodes-scratch.pth"
+weights_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/weights.pth"
 pre_weights_path: null
-logs_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/log.txt"
-checkpoint_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/checkpoints"
-dataloader_path: "/lustre/orion/csc590/scratch/george-adams/bgpt_folders/bgpt_110m-wikipedia-ag-news/dataloaders"
+logs_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/log.txt"
+checkpoint_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/checkpoints"
+dataloader_path: "/lustre/orion/csc590/scratch/jonathanlimsc/bgpt/bgpt_110m_ezmath_2digit/dataloaders"
 patch_size: 16
 patch_length: 1024
 byte_num_layers: 3
@@ -20,5 +19,9 @@ accumulation_steps: 1
 patch_sampling_batch_size: 0
 load_from_checkpoint: false
 load_from_pre_checkpoint: false
-checkpoint_frequency: 20
+checkpoint_frequency: 5
 first_launch: true
+wandb:
+  proj_name: byte_models
+  entity: jonathanlimsc
+  mode: offline

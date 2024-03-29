@@ -5,10 +5,11 @@ import torch
 import random
 import numpy as np
 import yaml
-from utils import *
 import argparse
-from config import *
 
+from utils import *
+# from config import *
+from pathlib import Path
 from tqdm import tqdm
 from copy import deepcopy
 from torch.cuda.amp import autocast, GradScaler
@@ -18,10 +19,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
 import wandb
-# from config import *
-from torch.utils.data import Dataset, DataLoader
 
-wandb.init(project='byte_models', entity='George Adams', mode='offline')
+from torch.utils.data import Dataset, DataLoader
 
 # Set up distributed training
 world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
@@ -234,7 +233,7 @@ def read_config_from_yaml(yaml_file):
 
 def main(args):
     config = read_config_from_yaml(args.train_config_path)
-
+    print(config)
     TRAIN_FOLDERS = config.get("train_folders")
     EVAL_FOLDERS = config.get("eval_folders")
 
@@ -258,8 +257,17 @@ def main(args):
     LOAD_FROM_CHECKPOINT = config.get("load_from_checkpoint")
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
     CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
+    WANDB_CONFIG = config.get("wandb")
+    WANDB_PROJ_NAME = WANDB_CONFIG.get("proj_name")
+    WANDB_ENTITY = WANDB_CONFIG.get("entity")
+    WANDB_MODE = WANDB_CONFIG.get("mode")
 
     FIRST_LAUNCH = config.get("first_launch")
+
+    Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
+    Path(DATALOADER_PATH).mkdir(parents=True, exist_ok=True)
+
+    wandb.init(project=WANDB_PROJ_NAME, entity=WANDB_ENTITY, mode=WANDB_MODE)
 
     wandb.config.update({
         "TRAIN_FOLDERS": TRAIN_FOLDERS,
@@ -319,6 +327,7 @@ def main(args):
     random.shuffle(eval_files)
 
     train_files = train_files[:train_batch_nums * batch_size]
+    print(f"Number of training files: {len(train_files)}")
     eval_files = eval_files[:eval_batch_nums * batch_size]
 
     train_dataset = ByteDataset(train_files, PATCH_SIZE, PATCH_LENGTH)
@@ -388,7 +397,8 @@ def main(args):
     if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
         # Load checkpoint to CPU
         # TODO: Missing function. Is this supposed to be find_most_recent_file?
-        most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
+        # most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
+        most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH)
         if most_recent_checkpoint is not None:
             WEIGHTS_PATH = most_recent_checkpoint
             checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
