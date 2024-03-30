@@ -7,10 +7,10 @@
 #SBATCH -N 32
 
 # Define the source and target directories
-SRC_DIR="/lustre/orion/csc590/scratch/george-adams/bgpt"
+SRC_DIR="/lustre/orion/csc590/scratch/george-adams/byte_models/bgpt"
 
 # Change to config YAML path
-CONFIG_PATH="bgpt/configs/config_100M.yaml"
+CONFIG_PATH="/lustre/orion/csc590/scratch/george-adams/byte_models/bgpt/configs/config_110M.yaml"
 
 cd "$SRC_DIR"
 
