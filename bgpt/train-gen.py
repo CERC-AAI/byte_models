@@ -165,7 +165,7 @@ def train_epoch(model,
     total_train_loss = 0
     iter_idx = 1
     checkpoint_iters = 0
-    # total_iters = 0
+    
     model.train()
 
     for batch in tqdm_train_set:
@@ -301,7 +301,6 @@ def main(args):
     })
 
     batch_size = BATCH_SIZE
-    total_iters = 0
 
     patch_config = GPT2Config(num_hidden_layers=PATCH_NUM_LAYERS,
                               max_length=PATCH_LENGTH,
@@ -329,12 +328,11 @@ def main(args):
 
     model = model.to(device)
 
-    # TODO: need to fix order of loading from checkpoint and initializing optimizers, lr_schedulers, etc.
+    is_checkpoint_loaded = False
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
         # Load checkpoint to CPU
-        # TODO: Missing function. Is this supposed to be find_most_recent_file?
-        # most_recent_checkpoint = find_most_recent_checkpoint(CHECKPOINT_PATH)
         most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH, pattern="checkpoint*.pth")
         if most_recent_checkpoint is not None:
             WEIGHTS_PATH = most_recent_checkpoint
@@ -353,27 +351,20 @@ def main(args):
             cpu_model.load_state_dict(checkpoint['model'])
             model.load_state_dict(cpu_model.state_dict())
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-
-        lr_scheduler = get_scheduler(
-            name="cosine",
-            optimizer=optimizer,
-            num_warmup_steps=NUM_EPOCHS * len(train_set) // 10,
-            num_training_steps=NUM_EPOCHS * len(train_set),
-        )
         optimizer.load_state_dict(checkpoint['optimizer'])
-        lr_scheduler.load_state_dict(checkpoint['lr_sched'])
+        # lr_scheduler.load_state_dict(checkpoint['lr_sched'])
         pre_epoch = checkpoint['epoch']
         best_epoch = checkpoint['best_epoch']
         min_eval_loss = checkpoint['min_eval_loss']
         total_iters = checkpoint['total_iters']
         print("Successfully Loaded Checkpoint from Epoch %d" % pre_epoch)
-        checkpoint = None
+        is_checkpoint_loaded = True
 
     else:
         pre_epoch = 0
         best_epoch = 0
         min_eval_loss = 100
+        total_iters = 0
 
     # load filenames under train and eval folder
     train_files = list_files_in_directory(TRAIN_FOLDERS)
@@ -409,39 +400,41 @@ def main(args):
     # print(dir(train_sampler))
     # print(dir(train_set))
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-
     lr_scheduler = get_scheduler(
         name="cosine",
         optimizer=optimizer,
         num_warmup_steps=NUM_EPOCHS * len(train_set) // 10,
         num_training_steps=NUM_EPOCHS * len(train_set),
     )
+    
+    if is_checkpoint_loaded and checkpoint is not None:
+        lr_scheduler.load_state_dict(checkpoint['lr_sched'])
 
-    if LOAD_FROM_PRE_CHECKPOINT and os.path.exists(PRE_WEIGHTS_PATH):
-        # Load checkpoint to CPU
-        checkpoint = torch.load(PRE_WEIGHTS_PATH, map_location='cpu')
+    # Note: Code that uses pre-checkpoint, which we aren't using now
+    # if LOAD_FROM_PRE_CHECKPOINT and os.path.exists(PRE_WEIGHTS_PATH):
+    #     # Load checkpoint to CPU
+    #     checkpoint = torch.load(PRE_WEIGHTS_PATH, map_location='cpu')
 
-        # Here, model is assumed to be on GPU
-        # Load state dict to CPU model first, then move the model to GPU
-        if torch.cuda.device_count() > 1:
-            # If you have a DataParallel model, you need to load to model.module instead
-            cpu_model = deepcopy(model.module)
-            cpu_model.load_state_dict(checkpoint['model'])
-            model.module.load_state_dict(cpu_model.state_dict())
-        else:
-            # Load to a CPU clone of the model, then load back
-            cpu_model = deepcopy(model)
-            cpu_model.load_state_dict(checkpoint['model'])
-            model.load_state_dict(cpu_model.state_dict())
+    #     # Here, model is assumed to be on GPU
+    #     # Load state dict to CPU model first, then move the model to GPU
+    #     if torch.cuda.device_count() > 1:
+    #         # If you have a DataParallel model, you need to load to model.module instead
+    #         cpu_model = deepcopy(model.module)
+    #         cpu_model.load_state_dict(checkpoint['model'])
+    #         model.module.load_state_dict(cpu_model.state_dict())
+    #     else:
+    #         # Load to a CPU clone of the model, then load back
+    #         cpu_model = deepcopy(model)
+    #         cpu_model.load_state_dict(checkpoint['model'])
+    #         model.load_state_dict(cpu_model.state_dict())
 
-        print(
-            f"Successfully Loaded Pretrained Checkpoint at Epoch {checkpoint['epoch']} with Loss {checkpoint['min_eval_loss']}")
+    #     print(
+    #         f"Successfully Loaded Pretrained Checkpoint at Epoch {checkpoint['epoch']} with Loss {checkpoint['min_eval_loss']}")
 
-    else:
-        pre_epoch = 0
-        best_epoch = 0
-        min_eval_loss = 100
+    # else:
+    #     pre_epoch = 0
+    #     best_epoch = 0
+    #     min_eval_loss = 100
 
     for epoch in range(1 + pre_epoch, NUM_EPOCHS + 1):
         train_sampler.set_epoch(epoch)
@@ -478,7 +471,8 @@ def main(args):
             wandb.log({
                 "train_loss": train_loss,
                 "eval_loss": eval_loss,
-                "epoch": epoch
+                "epoch": epoch,
+                "total_iters": total_iters,
             })
             if eval_loss < min_eval_loss:
                 best_epoch = epoch
@@ -489,7 +483,8 @@ def main(args):
                     'lr_sched': lr_scheduler.state_dict(),
                     'epoch': epoch,
                     'best_epoch': best_epoch,
-                    'min_eval_loss': min_eval_loss
+                    'min_eval_loss': min_eval_loss,
+                    'total_iters': total_iters,
                 }
                 torch.save(checkpoint, WEIGHTS_PATH)
                 # torch.save(dataloader.state_dict(), checkpoint_path)
