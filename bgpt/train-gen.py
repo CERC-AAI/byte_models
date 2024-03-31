@@ -352,6 +352,7 @@ def main(args):
             model.load_state_dict(cpu_model.state_dict())
 
         optimizer.load_state_dict(checkpoint['optimizer'])
+        # Note: lr_scheduler is loaded from checkpoint later after training dataloader is defined.
         # lr_scheduler.load_state_dict(checkpoint['lr_sched'])
         pre_epoch = checkpoint['epoch']
         best_epoch = checkpoint['best_epoch']
