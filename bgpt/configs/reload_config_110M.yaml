@@ -1,0 +1,27 @@
+train_folders:
+  - "/lustre/orion/csc590/scratch/george-adams/data/wikipedia/train_text3"
+eval_folders: []
+base_dir: "/lustre/orion/csc590/scratch/george-adams/bgpt2/byte_models/bgpt/110m_wikipedia"
+weights_path: "weights.pth"
+pre_weights_path: null
+logs_path: "log.txt"
+checkpoint_path: "checkpoints"
+dataloader_path: "dataloaders"
+patch_size: 16
+patch_length: 1024
+byte_num_layers: 3
+patch_num_layers: 12
+hidden_size: 768
+num_epochs: 32
+learning_rate: 0.0001
+batch_size: 16
+accumulation_steps: 1
+patch_sampling_batch_size: 0
+load_from_checkpoint: true
+load_from_pre_checkpoint: false
+checkpoint_frequency: 5
+first_launch: true
+wandb:
+  proj_name: byte_models
+  entity: jonathanlimsc
+  mode: offline
