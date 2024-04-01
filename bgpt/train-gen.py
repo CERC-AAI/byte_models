@@ -385,9 +385,9 @@ def main(args):
     eval_dataset = ByteDataset(eval_files, PATCH_SIZE, PATCH_LENGTH)
 
     # Initialize DistributedSampler
-    train_sampler = CustomDistributedSampler(train_dataset, num_replicas=world_size, rank=local_rank,
+    train_sampler = CustomDistributedSampler(train_dataset, num_replicas=world_size, rank=global_rank,
                                              start_index=total_iters)
-    eval_sampler = CustomDistributedSampler(eval_dataset, num_replicas=world_size, rank=local_rank)
+    eval_sampler = CustomDistributedSampler(eval_dataset, num_replicas=world_size, rank=global_rank)
 
     # Initialize DataLoaders with potentially state-restored samplers
     train_set = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch, sampler=train_sampler,
