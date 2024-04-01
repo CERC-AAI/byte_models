@@ -164,9 +164,8 @@ def train_epoch(model,
                 world_size=1,
                 ):
     global_batch_size = batch_size * world_size
-    # TODO: check if this gives us the total number of iters per epoch, or do we have to divide by world_size
+    # Note: Size of train_set is equal to the number of global batches
     iters_per_epoch = len(train_set)
-    print(f"Length of train_set: {iters_per_epoch}, batch size: {batch_size}")
 
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
