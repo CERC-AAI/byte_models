@@ -40,7 +40,7 @@ else:
 
 
 # Set random seed
-seed = 0 + global_rank
+seed = 0
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -160,7 +160,14 @@ def train_epoch(model,
                 accumulation_steps,
                 checkpoint_frequency,
                 checkpoint_path,
-                total_iters=0):
+                total_iters=0,
+                world_size=1,
+                ):
+    global_batch_size = batch_size * world_size
+    # TODO: check if this gives us the total number of iters per epoch, or do we have to divide by world_size
+    iters_per_epoch = len(train_set)
+    print(f"Length of train_set: {iters_per_epoch}, batch size: {batch_size}")
+
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     iter_idx = 1
@@ -191,6 +198,7 @@ def train_epoch(model,
                 'best_epoch': best_epoch,
                 'min_eval_loss': min_eval_loss,
                 'total_iters': total_iters,
+                'train_sampler_start_index': (total_iters % iters_per_epoch)*global_batch_size, # For sampler to start from this start_index
             }
 
         # print(checkpoint_iters, checkpoint_frequency)
@@ -329,6 +337,8 @@ def main(args):
     model = model.to(device)
 
     is_checkpoint_loaded = False
+    checkpoint = None
+    train_sampler_start_index = 0
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
@@ -358,6 +368,7 @@ def main(args):
         best_epoch = checkpoint['best_epoch']
         min_eval_loss = checkpoint['min_eval_loss']
         total_iters = checkpoint['total_iters']
+        train_sampler_start_index = checkpoint['train_sampler_start_index']
         print("Successfully Loaded Checkpoint from Epoch %d" % pre_epoch)
         is_checkpoint_loaded = True
 
@@ -385,9 +396,10 @@ def main(args):
     eval_dataset = ByteDataset(eval_files, PATCH_SIZE, PATCH_LENGTH)
 
     # Initialize DistributedSampler
-    train_sampler = CustomDistributedSampler(train_dataset, num_replicas=world_size, rank=local_rank,
-                                             start_index=total_iters)
-    eval_sampler = CustomDistributedSampler(eval_dataset, num_replicas=world_size, rank=local_rank)
+    train_sampler = CustomDistributedSampler(train_dataset, num_replicas=world_size, rank=global_rank,
+                                             start_index=train_sampler_start_index)
+    
+    eval_sampler = CustomDistributedSampler(eval_dataset, num_replicas=world_size, rank=global_rank)
 
     # Initialize DataLoaders with potentially state-restored samplers
     train_set = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch, sampler=train_sampler,
@@ -454,7 +466,8 @@ def main(args):
                                               ACCUMULATION_STEPS,
                                               CHECKPOINT_FREQUENCY,
                                               CHECKPOINT_PATH,
-                                              total_iters
+                                              total_iters,
+                                              world_size,
                                               )
         if len(eval_set) != 0:
             eval_loss = eval_epoch(model,
