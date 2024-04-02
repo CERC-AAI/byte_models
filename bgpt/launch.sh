@@ -14,8 +14,7 @@ CONFIG_PATH="/lustre/orion/csc590/scratch/george-adams/byte_models/bgpt/configs/
 
 cd "$SRC_DIR"
 
-source /lustre/orion/csc590/scratch/$(whoami)/miniconda3/etc/profile.d/conda.sh
-conda activate /lustre/orion/csc590/scratch/george-adams/conda_envs/bgpt
+source activate /lustre/orion/csc590/scratch/george-adams/conda_envs/bgpt
 
 module load rocm/5.2
 
