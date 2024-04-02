@@ -126,15 +126,18 @@ class ByteDataset(Dataset):
         file_bytes = torch.tensor(file_bytes, dtype=torch.long)
         file_masks = torch.tensor(file_masks, dtype=torch.long)
 
-        return file_bytes, file_masks
+        return file_bytes, file_masks, filename
 
 
 # call model with a batch of input
 def process_one_batch(batch,
                       model,
-                      world_size
+                      verbose=False
                       ):
-    input_patches, input_masks = batch
+    input_patches, input_masks, filenames = batch
+    if verbose:
+        print(f"Global Rank {global_rank}/{world_size} - Filenames in batch: {filenames}")
+
     loss = model(input_patches, input_masks).loss
 
     # Reduce the loss on GPU 0
@@ -161,7 +164,7 @@ def train_epoch(model,
                 checkpoint_frequency,
                 checkpoint_path,
                 total_iters=0,
-                world_size=1,
+                verbose=False,
                 ):
     global_batch_size = batch_size * world_size
     # Note: Size of train_set is equal to the number of global batches
@@ -178,7 +181,7 @@ def train_epoch(model,
         minibatches = split_into_minibatches(batch[0], batch[1], batch_size // accumulation_steps)
         for minibatch in minibatches:
             with autocast():
-                loss = process_one_batch(minibatch, model, world_size) / accumulation_steps
+                loss = process_one_batch(minibatch, model, verbose) / accumulation_steps
             scaler.scale(loss).backward()
             total_train_loss += loss.item()
         scaler.step(optimizer)
@@ -274,6 +277,7 @@ def main(args):
     LOAD_FROM_CHECKPOINT = config.get("load_from_checkpoint")
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
     CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
+    VERBOSE = config.get("verbose")
     WANDB_CONFIG = config.get("wandb")
     WANDB_PROJ_NAME = WANDB_CONFIG.get("proj_name")
     WANDB_ENTITY = WANDB_CONFIG.get("entity")
@@ -466,7 +470,7 @@ def main(args):
                                               CHECKPOINT_FREQUENCY,
                                               CHECKPOINT_PATH,
                                               total_iters,
-                                              world_size,
+                                              VERBOSE
                                               )
         if len(eval_set) != 0:
             eval_loss = eval_epoch(model,

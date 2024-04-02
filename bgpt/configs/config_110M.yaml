@@ -21,6 +21,7 @@ load_from_checkpoint: false
 load_from_pre_checkpoint: false
 checkpoint_frequency: 5
 first_launch: true
+verbose: true
 wandb:
   proj_name: byte_models
   entity: jonathanlimsc
