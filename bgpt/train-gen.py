@@ -57,20 +57,22 @@ def find_most_recent_file(directory, pattern="*.pth"):
 
 
 def collate_batch(input_batches):
-    input_patches, input_masks = zip(*input_batches)
+    input_patches, input_masks, input_file_indices = zip(*input_batches)
     input_patches = torch.nn.utils.rnn.pad_sequence(input_patches, batch_first=True, padding_value=256)
     input_masks = torch.nn.utils.rnn.pad_sequence(input_masks, batch_first=True, padding_value=0)
+    input_file_indices = torch.nn.utils.rnn.pad_sequence(input_file_indices, batch_first=True, padding_value=-1)
 
-    return input_patches.to(device), input_masks.to(device)
+    return input_patches.to(device), input_masks.to(device), input_file_indices.to(device)
 
 
-def split_into_minibatches(input_patches, input_masks, minibatch_size):
+def split_into_minibatches(input_patches, input_masks, input_file_indices, minibatch_size):
     minibatches = []
     for start_idx in range(0, len(input_patches), minibatch_size):
         end_idx = start_idx + minibatch_size
         minibatch_patches = input_patches[start_idx:end_idx]
         minibatch_masks = input_masks[start_idx:end_idx]
-        minibatches.append((minibatch_patches, minibatch_masks))
+        minibatch_file_indices = input_file_indices[start_idx:end_idx]
+        minibatches.append((minibatch_patches, minibatch_masks, minibatch_file_indices))
     return minibatches
 
 
@@ -125,8 +127,9 @@ class ByteDataset(Dataset):
 
         file_bytes = torch.tensor(file_bytes, dtype=torch.long)
         file_masks = torch.tensor(file_masks, dtype=torch.long)
+        file_idx = torch.tensor([idx], dtype=torch.long)
 
-        return file_bytes, file_masks, filename
+        return file_bytes, file_masks, file_idx
 
 
 # call model with a batch of input
@@ -134,9 +137,9 @@ def process_one_batch(batch,
                       model,
                       verbose=False
                       ):
-    input_patches, input_masks, filenames = batch
+    input_patches, input_masks, input_file_indices = batch
     if verbose:
-        print(f"Global Rank {global_rank}/{world_size} - Filenames in batch: {filenames}")
+        print(f"Global Rank {global_rank}/{world_size} - File indices in batch: {input_file_indices}")
 
     loss = model(input_patches, input_masks).loss
 
@@ -178,7 +181,7 @@ def train_epoch(model,
     model.train()
 
     for batch in tqdm_train_set:
-        minibatches = split_into_minibatches(batch[0], batch[1], batch_size // accumulation_steps)
+        minibatches = split_into_minibatches(batch[0], batch[1], batch[2], batch_size // accumulation_steps)
         for minibatch in minibatches:
             with autocast():
                 loss = process_one_batch(minibatch, model, verbose) / accumulation_steps
