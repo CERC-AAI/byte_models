@@ -1,5 +1,5 @@
 #### Configuration
-clone the directory for abc->midi conversion. Same repository was mentiond in the paper for convesion.
+clone this repo for abc->midi conversion. Same repository was mentiond in the paper for convesion.
 ```
     cd path/to/scripts/abc-midi
     git clone git@github.com:xlvector/abcmidi.git
