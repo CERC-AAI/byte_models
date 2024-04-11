@@ -207,10 +207,11 @@ def train_epoch(model,
             }
 
         # print(checkpoint_iters, checkpoint_frequency)
-        print(total_iters)
+        # print(total_iters)
 
         if checkpoint_iters == checkpoint_frequency:
             torch.save(checkpoint, f'{checkpoint_path}/checkpoint{total_iters}.pth')
+            torch.save(checkpoint, f'{checkpoint_path}/latest.pth')
             print('saved')
             checkpoint_iters = 0
 
@@ -254,6 +255,8 @@ def read_config_from_yaml(yaml_file):
 
 def main(args):
     config = read_config_from_yaml(args.train_config_path)
+    LOAD_FROM_CHECKPOINT = args.train_config_path
+
     print(config)
     TRAIN_FOLDERS = config.get("train_folders")
     EVAL_FOLDERS = config.get("eval_folders")
@@ -277,7 +280,7 @@ def main(args):
     BATCH_SIZE = config.get("batch_size")
     ACCUMULATION_STEPS = config.get("accumulation_steps")
     PATCH_SAMPLING_BATCH_SIZE = config.get("patch_sampling_batch_size")
-    LOAD_FROM_CHECKPOINT = config.get("load_from_checkpoint")
+    
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
     CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
     VERBOSE = config.get("verbose")
@@ -522,6 +525,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Training script for bGBT")
     parser.add_argument("--train-config-path", type=str, required=True,
                         help="Path to the config YAML file for training run")
+    parser.add_argument("--load-from-checkpoint", action='store_true', dest="load_from_checkpoint",
+                        help="If ths flag is present, model checkpoint will be loaded. By default without the flag, checkpoint will not be loaded.")
+    parser.set_defaults(load_from_checkpoint=False)
     args = parser.parse_args()
 
     main(args)
