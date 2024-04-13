@@ -5,6 +5,7 @@ import torch
 import random
 import numpy as np
 import yaml
+import json
 import argparse
 
 from utils import *
@@ -55,6 +56,13 @@ def find_most_recent_file(directory, pattern="*.pth"):
         return max(file_paths, key=os.path.getmtime)
     return None
 
+def find_most_recent_file_from_checkpoint_info(checkpoint_info_filepath):
+    checkpoint_filepath = None
+    with open(checkpoint_info_filepath, "r") as f:
+        data = json.load(f)
+        checkpoint_filepath = data.get("latest_checkpoint_path", None)
+
+    return checkpoint_filepath
 
 def collate_batch(input_batches):
     input_patches, input_masks, input_file_indices = zip(*input_batches)
@@ -166,7 +174,8 @@ def train_epoch(model,
                 accumulation_steps,
                 checkpoint_frequency,
                 checkpoint_path,
-                total_iters=0,
+                logging_frequency,
+                total_iters=1,
                 verbose=False,
                 ):
     global_batch_size = batch_size * world_size
@@ -176,17 +185,20 @@ def train_epoch(model,
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     iter_idx = 1
-    checkpoint_iters = 0
     
     model.train()
 
     for batch in tqdm_train_set:
         minibatches = split_into_minibatches(batch[0], batch[1], batch[2], batch_size // accumulation_steps)
+        minibatch_loss = 0
         for minibatch in minibatches:
             with autocast():
                 loss = process_one_batch(minibatch, model, verbose) / accumulation_steps
             scaler.scale(loss).backward()
-            total_train_loss += loss.item()
+            loss_val = loss.item()
+            minibatch_loss += loss_val
+            total_train_loss += loss_val
+
         scaler.step(optimizer)
         scaler.update()
 
@@ -194,32 +206,60 @@ def train_epoch(model,
         model.zero_grad(set_to_none=True)
         tqdm_train_set.set_postfix({str(global_rank) + '_train_loss': total_train_loss / iter_idx})
 
-        if iter_idx == checkpoint_frequency:
-            checkpoint = {
-                'model': model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'lr_sched': lr_scheduler.state_dict(),
-                'epoch': epoch,
-                'best_epoch': best_epoch,
-                'min_eval_loss': min_eval_loss,
-                'total_iters': total_iters,
-                'train_sampler_start_index': (total_iters % iters_per_epoch)*global_batch_size, # For sampler to start from this start_index
-            }
-
         # print(checkpoint_iters, checkpoint_frequency)
         # print(total_iters)
+        
+        if global_rank == 0:
+            if iter_idx % logging_frequency == 0:
+                wandb.log({
+                    "train_loss": minibatch_loss,
+                    "total_iters": total_iters,
+                }, step=total_iters)
 
-        if checkpoint_iters == checkpoint_frequency:
-            torch.save(checkpoint, f'{checkpoint_path}/checkpoint{total_iters}.pth')
-            torch.save(checkpoint, f'{checkpoint_path}/latest.pth')
-            print('saved')
-            checkpoint_iters = 0
+            if iter_idx % checkpoint_frequency == 0:
+                # Log the latest loss for this checkpoint
+                wandb.log({
+                    "train_loss": minibatch_loss,
+                    "total_iters": total_iters,
+                }, step=total_iters)
 
-        checkpoint_iters += 1
+                # For sampler to start from this start_index when resuming checkpoint
+                train_sampler_start_index = (total_iters % iters_per_epoch)*global_batch_size
+
+                checkpoint = {
+                    'model': model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'lr_sched': lr_scheduler.state_dict(),
+                    'epoch': epoch,
+                    'best_epoch': best_epoch,
+                    'min_eval_loss': min_eval_loss,
+                    'total_iters': total_iters,
+                    'train_sampler_start_index': train_sampler_start_index,
+                    'train_loss': minibatch_loss,
+
+                }
+                checkpoint_filepath = f'{checkpoint_path}/checkpoint{total_iters}.pth'
+                torch.save(checkpoint, f'{checkpoint_path}/checkpoint{total_iters}.pth')
+                torch.save(checkpoint, f'{checkpoint_path}/latest.pth')
+
+                # Save latest_checkpoint_info.json about the latest checkpoint info and path.
+                with open(f'{checkpoint_path}/latest_checkpoint_info.json', "w") as f:
+                    checkpoint_data = {
+                        "latest_checkpoint_path": checkpoint_filepath,
+                        "epoch": epoch,
+                        "best_epoch": best_epoch,
+                        "total_iters": total_iters,
+                        "train_sampler_start_index": train_sampler_start_index,
+                        "train_loss": minibatch_loss,
+                    }
+                    json.dump(checkpoint_data, f)
+
+                print(f"Checkpoint saved at {checkpoint_filepath}")
+
         total_iters += 1
         iter_idx += 1
 
-    return total_train_loss / (iter_idx - 1), total_iters
+    return total_train_loss / min((iter_idx - 1), 1), total_iters
 
 
 # do one epoch for eval
@@ -255,9 +295,12 @@ def read_config_from_yaml(yaml_file):
 
 def main(args):
     config = read_config_from_yaml(args.train_config_path)
-    LOAD_FROM_CHECKPOINT = args.train_config_path
 
+    LOAD_FROM_CHECKPOINT = args.load_from_checkpoint
+    config['load_from_checkpoint'] = LOAD_FROM_CHECKPOINT
+    
     print(config)
+
     TRAIN_FOLDERS = config.get("train_folders")
     EVAL_FOLDERS = config.get("eval_folders")
 
@@ -283,6 +326,7 @@ def main(args):
     
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
     CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
+    LOGGING_FREQUENCY = config.get("logging_frequency")
     VERBOSE = config.get("verbose")
     WANDB_CONFIG = config.get("wandb")
     WANDB_PROJ_NAME = WANDB_CONFIG.get("proj_name")
@@ -294,28 +338,33 @@ def main(args):
     Path(BASE_DIR).mkdir(parents=True, exist_ok=True)
     Path(CHECKPOINT_PATH).mkdir(parents=True, exist_ok=True)
     Path(DATALOADER_PATH).mkdir(parents=True, exist_ok=True)
+    
+    # Only log on master process
+    if global_rank == 0:
+        wandb.init(project=WANDB_PROJ_NAME, 
+                   entity=WANDB_ENTITY, 
+                   mode=WANDB_MODE,
+                   dir=BASE_DIR)
 
-    wandb.init(project=WANDB_PROJ_NAME, entity=WANDB_ENTITY, mode=WANDB_MODE)
-
-    wandb.config.update({
-        "TRAIN_FOLDERS": TRAIN_FOLDERS,
-        "EVAL_FOLDERS": EVAL_FOLDERS,
-        # "PRE_WEIGHTS_PATH": PRE_WEIGHTS_PATH,
-        "WEIGHTS_PATH": WEIGHTS_PATH,
-        "LOGS_PATH": LOGS_PATH,
-        "PATCH_SIZE": PATCH_SIZE,
-        "PATCH_LENGTH": PATCH_LENGTH,
-        "BYTE_NUM_LAYERS": BYTE_NUM_LAYERS,
-        "PATCH_NUM_LAYERS": PATCH_NUM_LAYERS,
-        "HIDDEN_SIZE": HIDDEN_SIZE,
-        "NUM_EPOCHS": NUM_EPOCHS,
-        "LEARNING_RATE": LEARNING_RATE,
-        "BATCH_SIZE": BATCH_SIZE,
-        "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
-        "LOAD_FROM_CHECKPOINT": LOAD_FROM_CHECKPOINT,
-        "LOAD_FROM_PRE_CHECKPOINT": LOAD_FROM_PRE_CHECKPOINT
-        # Add any other configurations you'd like to track
-    })
+        wandb.config.update({
+            "TRAIN_FOLDERS": TRAIN_FOLDERS,
+            "EVAL_FOLDERS": EVAL_FOLDERS,
+            # "PRE_WEIGHTS_PATH": PRE_WEIGHTS_PATH,
+            "WEIGHTS_PATH": WEIGHTS_PATH,
+            "LOGS_PATH": LOGS_PATH,
+            "PATCH_SIZE": PATCH_SIZE,
+            "PATCH_LENGTH": PATCH_LENGTH,
+            "BYTE_NUM_LAYERS": BYTE_NUM_LAYERS,
+            "PATCH_NUM_LAYERS": PATCH_NUM_LAYERS,
+            "HIDDEN_SIZE": HIDDEN_SIZE,
+            "NUM_EPOCHS": NUM_EPOCHS,
+            "LEARNING_RATE": LEARNING_RATE,
+            "BATCH_SIZE": BATCH_SIZE,
+            "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
+            "LOAD_FROM_CHECKPOINT": LOAD_FROM_CHECKPOINT,
+            "LOAD_FROM_PRE_CHECKPOINT": LOAD_FROM_PRE_CHECKPOINT
+            # Add any other configurations you'd like to track
+        })
 
     batch_size = BATCH_SIZE
 
@@ -350,9 +399,10 @@ def main(args):
     train_sampler_start_index = 0
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
-    if LOAD_FROM_CHECKPOINT and os.path.exists(WEIGHTS_PATH):
+    if LOAD_FROM_CHECKPOINT:
         # Load checkpoint to CPU
-        most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH, pattern="checkpoint*.pth")
+        # most_recent_checkpoint = find_most_recent_file(CHECKPOINT_PATH, pattern="checkpoint*.pth")
+        most_recent_checkpoint = find_most_recent_file_from_checkpoint_info(f"{CHECKPOINT_PATH}/latest_checkpoint_info.json")
         if most_recent_checkpoint is not None:
             WEIGHTS_PATH = most_recent_checkpoint
             checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
@@ -378,14 +428,22 @@ def main(args):
         min_eval_loss = checkpoint['min_eval_loss']
         total_iters = checkpoint['total_iters']
         train_sampler_start_index = checkpoint['train_sampler_start_index']
+        checkpoint_train_loss = checkpoint['train_loss']
         print("Successfully Loaded Checkpoint from Epoch %d" % pre_epoch)
         is_checkpoint_loaded = True
 
+        # Log checkpoint's train_loss and total_iters for sanity checking on wandb
+        if global_rank == 0:
+            wandb.log({
+                        "train_loss": checkpoint_train_loss,
+                        "total_iters": total_iters,
+                        }, step=total_iters)
+
     else:
-        pre_epoch = 0
-        best_epoch = 0
+        pre_epoch = 1
+        best_epoch = 1
         min_eval_loss = 100
-        total_iters = 0
+        total_iters = 1
 
     # load filenames under train and eval folder
     train_files = list_files_in_directory(TRAIN_FOLDERS)
@@ -454,8 +512,8 @@ def main(args):
     #         f"Successfully Loaded Pretrained Checkpoint at Epoch {checkpoint['epoch']} with Loss {checkpoint['min_eval_loss']}")
 
     # else:
-    #     pre_epoch = 0
-    #     best_epoch = 0
+    #     pre_epoch = 1
+    #     best_epoch = 1
     #     min_eval_loss = 100
 
     for epoch in range(1 + pre_epoch, NUM_EPOCHS + 1):
@@ -463,7 +521,7 @@ def main(args):
         eval_sampler.set_epoch(epoch)
         print('-' * 21 + "Epoch " + str(epoch) + '-' * 21)
 
-        train_loss, total_iters = train_epoch(model,
+        ave_train_loss, total_iters = train_epoch(model,
                                               train_set,
                                               lr_scheduler,
                                               scaler,
@@ -475,6 +533,7 @@ def main(args):
                                               ACCUMULATION_STEPS,
                                               CHECKPOINT_FREQUENCY,
                                               CHECKPOINT_PATH,
+                                              LOGGING_FREQUENCY,
                                               total_iters,
                                               VERBOSE
                                               )
@@ -489,27 +548,29 @@ def main(args):
 
         if global_rank == 0:
             with open(LOGS_PATH, 'a') as f:
-                f.write("Epoch " + str(epoch) + "\ntrain_loss: " + str(train_loss) + "\neval_loss: " + str(
+                f.write("Epoch " + str(epoch) + "\nave_train_loss: " + str(ave_train_loss) + "\neval_loss: " + str(
                     eval_loss) + "\ntime: " + time.asctime(time.localtime(time.time())) + "\n\n")
+            
             wandb.log({
-                "train_loss": train_loss,
+                "epoch_ave_train_loss": ave_train_loss,
                 "eval_loss": eval_loss,
                 "epoch": epoch,
                 "total_iters": total_iters,
-            })
-            if eval_loss < min_eval_loss:
-                best_epoch = epoch
-                min_eval_loss = eval_loss
-                checkpoint = {
-                    'model': model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'lr_sched': lr_scheduler.state_dict(),
-                    'epoch': epoch,
-                    'best_epoch': best_epoch,
-                    'min_eval_loss': min_eval_loss,
-                    'total_iters': total_iters,
-                }
-                torch.save(checkpoint, WEIGHTS_PATH)
+            }, step=total_iters)
+            
+            # if eval_loss < min_eval_loss:
+            #     best_epoch = epoch
+            #     min_eval_loss = eval_loss
+            #     checkpoint = {
+            #         'model': model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
+            #         'optimizer': optimizer.state_dict(),
+            #         'lr_sched': lr_scheduler.state_dict(),
+            #         'epoch': epoch,
+            #         'best_epoch': best_epoch,
+            #         'min_eval_loss': min_eval_loss,
+            #         'total_iters': total_iters,
+            #     }
+            #     torch.save(checkpoint, WEIGHTS_PATH)
                 # torch.save(dataloader.state_dict(), checkpoint_path)
 
         if world_size > 1:
