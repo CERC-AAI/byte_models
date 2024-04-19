@@ -3,12 +3,12 @@
 SRC_DIR="/nfs/scratch/jonathan/byte_models"
 
 # Number of jobs to submit
-NUM_JOBS=2
+NUM_JOBS=3
 NUM_NODES=1
-NUM_GPUS_PER_NODE=2
+NUM_GPUS_PER_NODE=4
 CPUS_PER_TASK=6
 MEM="32G"
-TIME_LIMIT_PER_JOB="00:05:00"
+TIME_LIMIT_PER_JOB="24:00:00"
 # Job dependency (set to "none" for the first job)
 DEPENDENCY="none"
 

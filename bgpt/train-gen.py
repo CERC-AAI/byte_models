@@ -259,31 +259,35 @@ def train_epoch(model,
         total_iters += 1
         iter_idx += 1
 
-    return total_train_loss / min((iter_idx - 1), 1), total_iters
+    return total_train_loss / max((iter_idx - 1), 1), total_iters
 
 
 # do one epoch for eval
 def eval_epoch(model,
-               eval_set,
-               batch_size,
-               accumulation_steps
-               ):
-    # tqdm_eval_set = tqdm(eval_set)
+                eval_set,
+                batch_size,
+                accumulation_steps
+            ):
+    
     # total_eval_loss = 0
     # iter_idx = 1
-    # model.eval()
 
-    # # Evaluate data for one epoch
-    # for batch in tqdm_eval_set:
-    #     minibatches = split_into_minibatches(batch[0], batch[1], batch_size // accumulation_steps)
-    #     for minibatch in minibatches:
-    #         with torch.no_grad():
-    #             loss = process_one_batch(minibatch) / accumulation_steps
-    #         total_eval_loss += loss.item()
-    #     tqdm_eval_set.set_postfix({str(global_rank) + '_eval_loss': total_eval_loss / iter_idx})
-    #     iter_idx += 1
-    # return total_eval_loss / (iter_idx-1)
+    # if len(eval_set) > 0:
+    #     model.eval()
+    #     tqdm_eval_set = tqdm(eval_set)
+    #     # Evaluate data for one epoch
+    #     for batch in tqdm_eval_set:
+    #         minibatches = split_into_minibatches(batch[0], batch[1], batch[2], batch_size // accumulation_steps)
+    #         for minibatch in minibatches:
+    #             with torch.no_grad():
+    #                 loss = process_one_batch(batch=minibatch, model=model) / accumulation_steps
+    #             total_eval_loss += loss.item()
+    #         tqdm_eval_set.set_postfix({str(global_rank) + '_eval_loss': total_eval_loss / iter_idx})
+    #         iter_idx += 1
 
+    #     model.train()
+
+    # return total_eval_loss / max(iter_idx-1, 1)
     return 0
 
 
@@ -553,7 +557,7 @@ def main(args):
             
             wandb.log({
                 "epoch_ave_train_loss": ave_train_loss,
-                "eval_loss": eval_loss,
+                "ave_eval_loss": eval_loss,
                 "epoch": epoch,
                 "total_iters": total_iters,
             }, step=total_iters)

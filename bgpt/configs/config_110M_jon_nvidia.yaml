@@ -1,5 +1,5 @@
 train_folders:
-  - "/nfs/scratch/jonathan/byte_models/data/math-adder/merged-symbols/sample_10K"
+  - "/nfs/scratch/jonathan/byte_models/data/math-adder/merged-symbols/train"
 eval_folders: []
 base_dir: "/nfs/scratch/jonathan/byte_models/test_continual"
 weights_path: "weights.pth"
@@ -12,15 +12,15 @@ patch_length: 512
 byte_num_layers: 3
 patch_num_layers: 12
 hidden_size: 768
-num_epochs: 32
+num_epochs: 10
 learning_rate: 0.0001
 batch_size: 8
 accumulation_steps: 1
 patch_sampling_batch_size: 0
 # load_from_checkpoint: false # Deprecated this into a command-line arg that is False by default. So that there's no need to maintain a config where this is True and a reload config where this is True.
 load_from_pre_checkpoint: false
-checkpoint_frequency: 100
-logging_frequency: 10
+checkpoint_frequency: 10000
+logging_frequency: 100
 first_launch: true
 verbose: false
 wandb:

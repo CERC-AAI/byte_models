@@ -6,7 +6,7 @@ SRC_DIR="/home/jonathan/cerc/byte_models/bgpt"
 CONFIG_PATH="/home/jonathan/cerc/byte_models/bgpt/configs/config_110M_jon_nvidia.yaml"
 # TODO: Pass this through from launch_global_jon.sh
 NUM_NODES=1
-NUM_GPUS_PER_NODE=2
+NUM_GPUS_PER_NODE=4
 
 cd "$SRC_DIR"
 
