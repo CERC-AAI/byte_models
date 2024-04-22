@@ -11,6 +11,7 @@ import argparse
 from utils import *
 # from config import *
 from pathlib import Path
+from datetime import datetime
 from tqdm import tqdm
 from copy import deepcopy
 from torch.cuda.amp import autocast, GradScaler
@@ -164,6 +165,7 @@ def process_one_batch(batch,
 # do one epoch for training
 def train_epoch(model,
                 train_set,
+                eval_set,
                 lr_scheduler,
                 scaler,
                 optimizer,
@@ -208,7 +210,16 @@ def train_epoch(model,
 
         # print(checkpoint_iters, checkpoint_frequency)
         # print(total_iters)
-        
+
+        # Do eval
+        if iter_idx % checkpoint_frequency == 0:
+            eval_loss = eval_epoch(model,
+                                    eval_set,
+                                    batch_size,
+                                    accumulation_steps
+                                    )
+            
+
         if global_rank == 0:
             if iter_idx % logging_frequency == 0:
                 wandb.log({
@@ -221,6 +232,7 @@ def train_epoch(model,
                 wandb.log({
                     "train_loss": minibatch_loss,
                     "total_iters": total_iters,
+                    "ave_eval_loss": eval_loss if eval_loss else 0,
                 }, step=total_iters)
 
                 # For sampler to start from this start_index when resuming checkpoint
@@ -236,7 +248,7 @@ def train_epoch(model,
                     'total_iters': total_iters,
                     'train_sampler_start_index': train_sampler_start_index,
                     'train_loss': minibatch_loss,
-
+                    'ave_eval_loss': eval_loss if eval_loss else 0,
                 }
                 checkpoint_filepath = f'{checkpoint_path}/checkpoint{total_iters}.pth'
                 torch.save(checkpoint, f'{checkpoint_path}/checkpoint{total_iters}.pth')
@@ -251,6 +263,7 @@ def train_epoch(model,
                         "total_iters": total_iters,
                         "train_sampler_start_index": train_sampler_start_index,
                         "train_loss": minibatch_loss,
+                        "ave_eval_loss": eval_loss if eval_loss else 0,
                     }
                     json.dump(checkpoint_data, f)
 
@@ -269,26 +282,26 @@ def eval_epoch(model,
                 accumulation_steps
             ):
     
-    # total_eval_loss = 0
-    # iter_idx = 1
+    total_eval_loss = 0
+    iter_idx = 1
 
-    # if len(eval_set) > 0:
-    #     model.eval()
-    #     tqdm_eval_set = tqdm(eval_set)
-    #     # Evaluate data for one epoch
-    #     for batch in tqdm_eval_set:
-    #         minibatches = split_into_minibatches(batch[0], batch[1], batch[2], batch_size // accumulation_steps)
-    #         for minibatch in minibatches:
-    #             with torch.no_grad():
-    #                 loss = process_one_batch(batch=minibatch, model=model) / accumulation_steps
-    #             total_eval_loss += loss.item()
-    #         tqdm_eval_set.set_postfix({str(global_rank) + '_eval_loss': total_eval_loss / iter_idx})
-    #         iter_idx += 1
+    if len(eval_set) > 0:
+        model.eval()
+        tqdm_eval_set = tqdm(eval_set)
+        # Evaluate data for one epoch
+        for batch in tqdm_eval_set:
+            minibatches = split_into_minibatches(batch[0], batch[1], batch[2], batch_size // accumulation_steps)
+            for minibatch in minibatches:
+                with torch.no_grad():
+                    loss = process_one_batch(batch=minibatch, model=model) / accumulation_steps
+                total_eval_loss += loss.item()
+            tqdm_eval_set.set_postfix({str(global_rank) + '_eval_loss': total_eval_loss / iter_idx})
+            iter_idx += 1
 
-    #     model.train()
+        model.train()
 
-    # return total_eval_loss / max(iter_idx-1, 1)
-    return 0
+    return total_eval_loss / max(iter_idx-1, 1)
+    # return 0
 
 
 def read_config_from_yaml(yaml_file):
@@ -336,6 +349,7 @@ def main(args):
     WANDB_PROJ_NAME = WANDB_CONFIG.get("proj_name")
     WANDB_ENTITY = WANDB_CONFIG.get("entity")
     WANDB_MODE = WANDB_CONFIG.get("mode")
+    WANDB_NAME = WANDB_CONFIG.get("name", "run")
 
     FIRST_LAUNCH = config.get("first_launch")
 
@@ -348,7 +362,8 @@ def main(args):
         wandb.init(project=WANDB_PROJ_NAME, 
                    entity=WANDB_ENTITY, 
                    mode=WANDB_MODE,
-                   dir=BASE_DIR)
+                   dir=BASE_DIR,
+                   name=WANDB_NAME + f"_{datetime.now().strftime('%Y%m%d_%H%M_%S')}")
 
         wandb.config.update({
             "TRAIN_FOLDERS": TRAIN_FOLDERS,
@@ -527,6 +542,7 @@ def main(args):
 
         ave_train_loss, total_iters = train_epoch(model,
                                               train_set,
+                                              eval_set,
                                               lr_scheduler,
                                               scaler,
                                               optimizer,
