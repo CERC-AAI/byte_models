@@ -15,7 +15,7 @@ DEPENDENCY="none"
 for (( i=1; i<=NUM_JOBS; i++ ))
 do
   # Job name
-  JOB_NAME="test-eval-$i"
+  JOB_NAME="test-$i"
 
   # Submit job and capture the job ID
   if [ "$DEPENDENCY" == "none" ]; then

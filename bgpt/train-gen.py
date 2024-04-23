@@ -177,7 +177,7 @@ def train_epoch(model,
                 checkpoint_frequency,
                 checkpoint_path,
                 logging_frequency,
-                total_iters=1,
+                global_total_iters=1,
                 verbose=False,
                 ):
     global_batch_size = batch_size * world_size
@@ -187,6 +187,7 @@ def train_epoch(model,
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     iter_idx = 1
+    total_iters = global_total_iters
     
     model.train()
 
