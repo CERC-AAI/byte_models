@@ -15,7 +15,7 @@ patch_num_layers: 12
 hidden_size: 768
 num_epochs: 10
 learning_rate: 0.0001
-batch_size: 28
+batch_size: 26
 accumulation_steps: 1
 patch_sampling_batch_size: 0
 # load_from_checkpoint: false # Deprecated this into a command-line arg that is False by default. So that there's no need to maintain a config where this is True and a reload config where this is True.

@@ -52,6 +52,7 @@ def main(args):
 
     for i, data_filepath in enumerate(data_filepaths):
         print(f"Reading {data_filepath}")
+        # Reference: https://patrykchrabaszcz.github.io/Imagenet32/
         d = unpickle(data_filepath)
         x = d['data']
         y = d['labels']
