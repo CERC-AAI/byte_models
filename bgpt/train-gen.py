@@ -459,7 +459,7 @@ def main(args):
                         }, step=total_iters)
 
     else:
-        pre_epoch = 1
+        pre_epoch = 0
         best_epoch = 1
         min_eval_loss = 100
         total_iters = 1
