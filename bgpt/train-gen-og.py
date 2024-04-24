@@ -219,7 +219,7 @@ def train_epoch(total_train_iters = 1, logging_frequency = 100):
             if iter_idx % logging_frequency == 0:
                 wandb.log({
                     "train_loss": minibatch_loss,
-                    "total_iters": total_train_iters,
+                    "total_train_iters": total_train_iters,
                 }, step=total_train_iters)   
         scaler.step(optimizer)
         scaler.update()
@@ -253,8 +253,9 @@ def eval_epoch(total_val_iters = 1, logging_frequency = 100):
             if iter_idx % logging_frequency == 0:
                 wandb.log({
                     "eval_loss": minibatch_loss,
-                    "total_iters": total_val_iters,
+                    "total_val_iters": total_val_iters,
                 }, step=total_val_iters)
+        # print(f"current iter is : {total_val_iters}")
         tqdm_eval_set.set_postfix({str(global_rank)+'_eval_loss': total_eval_loss / iter_idx})
         iter_idx += 1
         total_val_iters += 1 
@@ -386,11 +387,11 @@ if __name__ == "__main__":
         print('-' * 21 + "Epoch " + str(epoch) + '-' * 21)
         avg_train_loss, total_train_iters = train_epoch(total_train_iters, 1)
         eval_loss, total_val_iters = eval_epoch(total_val_iters, 1)
-        
+        print(total_val_iters)
             
         with open(LOGS_PATH,'a') as f:
             f.write("Epoch " + str(epoch) + "\ntrain_loss: " + str(avg_train_loss) + "\neval_loss: " +str(eval_loss) + "\ntime: " + time.asctime(time.localtime(time.time())) + "\n\n")
-        
+        # print(f"current iter is : {total_train_iters}")
         if global_rank == 0:
             wandb.log({
                     "epoch_avg_train_loss": avg_train_loss,

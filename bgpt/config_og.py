@@ -7,7 +7,7 @@ TRAIN_FOLDERS = [
                 # "librispeech8K/train", 
                 # "speech_commands8K/train", 
                 #"irishman/train",
-                # "/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy",
+                #"/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy",
                 "/home/mila/m/mina.beiramy/scratch/bgpt/data/mix",
                 # "cpu_states/train",
                  ]     # Folder containing training data
@@ -19,8 +19,8 @@ EVAL_FOLDERS = [
                 # "librispeech8K/test", 
                 # "speech_commands8K/test", 
                 #"irishman/test",
-                # "/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy_val",
-                "/home/mila/m/mina.beiramy/scratch/bgpt/data/mix",
+                #"/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy_val",
+                "/home/mila/m/mina.beiramy/scratch/bgpt/data/mix_val",
                 # "cpu_states/test",
                 ]                                               # Folder containing evaluation data
 
