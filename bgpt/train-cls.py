@@ -1,4 +1,5 @@
 import os
+import wandb
 import math
 import time
 import torch
@@ -8,6 +9,8 @@ from copy import deepcopy
 from utils import *
 from config import *
 from tqdm import tqdm
+from datetime import datetime
+from torchmetrics import AUROC
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Config, get_scheduler
@@ -141,59 +144,113 @@ def process_one_batch(batch):
     loss = loss_fn(logits, labels)
     prediction = torch.argmax(logits, dim=1)
     acc_num = torch.sum(prediction==labels)
-
-    return loss, acc_num
+    
+    return loss, acc_num, labels, prediction
 
 # do one epoch for training
-def train_epoch():
+def train_epoch(total_train_iters = 1, logging_frequency = 100):
+    
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     total_acc_num = 0
     iter_idx = 1
     model.train()
-
+    y_true = []
+    y_pred = []
     for batch in tqdm_train_set:
         if is_autocast:
             with autocast():
-                loss, acc_num = process_one_batch(batch)
+                loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
             scaler.scale(loss).backward()
+            
             scaler.step(optimizer)
             scaler.update()
         else:
-            loss, acc_num = process_one_batch(batch)
+            loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
             loss.backward()
             optimizer.step()
+        
         
         lr_scheduler.step()
         model.zero_grad(set_to_none=True)
         total_train_loss += loss.item()
         total_acc_num += acc_num.item()
+        
+        y_true.append(batch_y_true)
+        y_pred.append(batch_y_pred.detach().cpu())
+        
+        if global_rank == 0:
+            if iter_idx % logging_frequency == 0:
+                wandb.log({
+                    "train_loss": total_train_loss,
+                    "total_train_iters": total_train_iters,
+                    "total_acc_num": total_acc_num,
+                }, step=total_train_iters)
+        
         tqdm_train_set.set_postfix({str(global_rank)+'_train_acc': total_acc_num / (iter_idx*batch_size)})
         iter_idx += 1
-        
-    return total_acc_num / ((iter_idx-1)*batch_size)
+        total_train_iters +=1 
+    
+    return total_acc_num / ((iter_idx-1)*batch_size), total_train_iters, y_true, y_pred
 
 # do one epoch for eval
-def eval_epoch():
+def eval_epoch(total_val_iters = 1, logging_frequency = 100):
     tqdm_eval_set = tqdm(eval_set)
     total_eval_loss = 0
     total_acc_num = 0
     iter_idx = 1
     model.eval()
-  
+    y_true = []
+    y_pred = []
+
     # Evaluate data for one epoch
     for batch in tqdm_eval_set: 
         with torch.no_grad():
-            loss, acc_num = process_one_batch(batch)
+            loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
             total_eval_loss += loss.item()
             total_acc_num += acc_num.item()
+            y_true.append(batch_y_true)
+            y_pred.append(batch_y_pred.detach().cpu())
+            if global_rank == 0:
+                if iter_idx % logging_frequency == 0:
+                    wandb.log({
+                        "eval_loss": total_eval_loss,
+                        "total_val_iters": total_val_iters,
+                        "total_acc_num": total_acc_num,
+                    }, step=total_val_iters)
         tqdm_eval_set.set_postfix({str(global_rank)+'_eval_acc': total_acc_num / (iter_idx*batch_size)})
         iter_idx += 1
-    return total_acc_num / ((iter_idx-1)*batch_size)
+        total_val_iters += 1
+    return total_acc_num / ((iter_idx-1)*batch_size), total_val_iters, y_true, y_pred
 
 # train and eval
 if __name__ == "__main__":
-
+    current_time = datetime.now()
+    run_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    if global_rank == 0:
+        wandb.init(project="null_cls", entity="mina-beiramy", name=f"bgpt_mozilla_cls_{run_name}")
+        
+        wandb.config.update({
+            "TRAIN_FOLDERS": TRAIN_FOLDERS,
+            "EVAL_FOLDERS": EVAL_FOLDERS,
+            # "PRE_WEIGHTS_PATH": PRE_WEIGHTS_PATH,
+            "WEIGHTS_PATH": WEIGHTS_PATH,
+            "LOGS_PATH": LOGS_PATH,
+            "PATCH_SIZE": PATCH_SIZE,
+            "PATCH_LENGTH": PATCH_LENGTH,
+            "BYTE_NUM_LAYERS": BYTE_NUM_LAYERS,
+            "PATCH_NUM_LAYERS": PATCH_NUM_LAYERS,
+            "HIDDEN_SIZE": HIDDEN_SIZE,
+            "NUM_EPOCHS": NUM_EPOCHS,
+            "LEARNING_RATE": LEARNING_RATE,
+            "BATCH_SIZE": BATCH_SIZE,
+            "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
+            "LOAD_FROM_CHECKPOINT": LOAD_FROM_CHECKPOINT,
+            # "LOAD_FROM_PRE_CHECKPOINT": LOAD_FROM_PRE_CHECKPOINT
+            # Add any other configurations you'd like to track
+        })
+        
+    auroc = AUROC(task="binary")
     labels = train_set.labels
 
     train_sampler = DistributedSampler(train_set, num_replicas=world_size, rank=global_rank)
@@ -271,16 +328,37 @@ if __name__ == "__main__":
         best_epoch = 0
         max_eval_acc = 0
 
+    total_train_iters = 1
+    total_val_iters = 1
     for epoch in range(1, NUM_EPOCHS+1-pre_epoch):
         train_sampler.set_epoch(epoch)
         eval_sampler.set_epoch(epoch)
         epoch += pre_epoch
         print('-' * 21 + "Epoch " + str(epoch) + '-' * 21)
-        train_acc = train_epoch()
-        eval_acc = eval_epoch()
+        train_acc, total_train_iters, y_true, y_pred = train_epoch(total_train_iters=total_train_iters)
+        y_true_epoch = torch.cat(y_true, dim=0)
+        y_pred_epoch = torch.cat(y_pred, dim=0)
+        train_auroc_score = auroc(y_pred, y_true)
+        
+        eval_acc, total_val_iters, y_true, y_pred = eval_epoch(total_val_iters=total_val_iters)
+        y_true_epoch = torch.cat(y_true, dim=0)
+        y_pred_epoch = torch.cat(y_pred, dim=0)
+        val_auroc_score = auroc(y_pred, y_true)
+        
         if global_rank==0:
             with open(LOGS_PATH,'a') as f:
                 f.write("Epoch " + str(epoch) + "\ntrain_acc: " + str(train_acc) + "\neval_acc: " +str(eval_acc) + "\ntime: " + time.asctime(time.localtime(time.time())) + "\n\n")
+            
+            if global_rank == 0:
+                wandb.log({
+                        "epoch_avg_train_acc": train_acc,
+                        "epoch_avg_eval_acc": eval_acc,
+                        "epoch": epoch,
+                        "total_iters": total_train_iters,
+                        "epoch_train_auroc_score": train_auroc_score,
+                        "epoch_val_auroc_score": val_auroc_score,
+                    }, step=total_train_iters)
+            
             if eval_acc > max_eval_acc:
                 best_epoch = epoch
                 max_eval_acc = eval_acc
