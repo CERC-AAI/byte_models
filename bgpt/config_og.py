@@ -26,8 +26,8 @@ EVAL_FOLDERS = [
 
 # Configuration for the paths
 PRETRAINED_PATH = "weights-text.pth"                            # Path to pre-trained weights
-WEIGHTS_PATH = "/home/mila/m/mina.beiramy/workspace/byte_models/scripts/abc-midi/exp/chkp/dummy.pth"                       # Path to save weights
-LOGS_PATH = "/home/mila/m/mina.beiramy/workspace/byte_models/scripts/abc-midi/logs/logs-test-ag-cls.txt"                              # Path to save logs
+WEIGHTS_PATH = "/home/mila/m/mina.beiramy/workspace/byte_models/scripts/abc-midi/exp/chkp/abcmidi-btch16-ptch16-v1.pth"                       # Path to save weights
+LOGS_PATH = "/home/mila/m/mina.beiramy/workspace/byte_models/scripts/abc-midi/logs/logs-abcmidi-btch16-ptch16-v1.txt"                              # Path to save logs
 
 # Configuration for the model
 PATCH_SIZE = 16                                                 # Patch Size

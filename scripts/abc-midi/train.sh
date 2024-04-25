@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH -J test-batch
-#SBATCH -o ./logs/abd-midi-default.out
-#SBATCH --error=./logs/abc-midi-default.err
+#SBATCH -J abc-midi-bidirectional-btch16-paatch16-v1
+#SBATCH -o ./logs/abcmidi-btch16-ptch16-v1.out
+#SBATCH --error=./logs/abcmidi-btch16-ptch16-v1.err
 #SBATCH -c 4
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=32G
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 #SBATCH --partition=unkillable
 
 
