@@ -400,7 +400,11 @@ def main(args):
                              hidden_size=HIDDEN_SIZE,
                              n_head=HIDDEN_SIZE // 64,
                              vocab_size=256 + 1)
-    model = bGPTLMHeadModel(patch_config, byte_config)
+    model = bGPTLMHeadModel(patch_config, 
+                            byte_config,
+                            PATCH_SIZE,
+                            PATCH_SAMPLING_BATCH_SIZE,
+                            )
     model = model.to(device)
 
     # print parameter number

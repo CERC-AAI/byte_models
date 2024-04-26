@@ -117,7 +117,7 @@ class ByteDataset(Dataset):
     def __getitem__(self, idx):
         
         filename, label = self.filenames[idx]
-        file_bytes = read_bytes(filename)
+        file_bytes = read_bytes(filename, self.patch_size)
 
         file_bytes = torch.tensor(file_bytes, dtype=torch.long)
         label = torch.tensor(self.labels[label], dtype=torch.long)
@@ -172,11 +172,12 @@ def train_epoch(model,
         loss_val = loss.item()
         total_train_loss += loss_val
         total_acc_num += acc_num.item()
-        if iter_idx % logging_frequency == 0:
-            wandb.log({
-            "train_loss": loss_val,
-            "total_iters": total_iters,
-            }, step=total_iters)
+        if global_rank == 0:
+            if iter_idx % logging_frequency == 0:
+                wandb.log({
+                "train_loss": loss_val,
+                "total_iters": total_iters,
+                }, step=total_iters)
         tqdm_train_set.set_postfix({str(global_rank)+'_train_acc': total_acc_num / max((iter_idx*batch_size), 1)})
         iter_idx += 1
         total_iters += 1
@@ -184,7 +185,7 @@ def train_epoch(model,
     num_examples = max((iter_idx-1)*batch_size, 1)
     train_acc = total_acc_num / num_examples
     ave_train_loss = total_train_loss / num_examples
-    return train_acc, ave_train_loss, total_iters
+    return train_acc, ave_train_loss, total_iters-1
 
 # do one epoch for eval
 def eval_epoch(model,
@@ -233,6 +234,7 @@ def main(args):
     WEIGHTS_PATH = f'{BASE_DIR}/{config.get("weights_path")}'
     LOGS_PATH = f'{BASE_DIR}/{config.get("logs_path")}'
     CHECKPOINT_PATH = f'{BASE_DIR}/{config.get("checkpoint_path")}'
+    DATALOADER_PATH = f'{BASE_DIR}/{config.get("dataloader_path")}'
     
     PATCH_SIZE = config.get("patch_size")
     PATCH_LENGTH = config.get("patch_length")
@@ -298,7 +300,7 @@ def main(args):
                         hidden_size=HIDDEN_SIZE,
                         n_head=HIDDEN_SIZE//64,
                         vocab_size=1)
-    model = bGPTForClassification(patch_config, len(train_set.labels))
+    model = bGPTForClassification(patch_config, len(train_set.labels), PATCH_SIZE)
     model = model.to(device)
 
     # print parameter number
@@ -389,7 +391,7 @@ def main(args):
         pre_epoch = 0
         best_epoch = 0
         max_eval_acc = 0
-        total_iters = 1
+        total_iters = 0
 
     for epoch in range(1, NUM_EPOCHS+1-pre_epoch):
         train_sampler.set_epoch(epoch)
@@ -405,7 +407,7 @@ def main(args):
                                                                 loss_fn,
                                                                 BATCH_SIZE,
                                                                 LOGGING_FREQUENCY,
-                                                                total_iters,
+                                                                total_iters+1,
                                                             )
         eval_acc, ave_eval_loss = eval_epoch(model,
                                             eval_set,

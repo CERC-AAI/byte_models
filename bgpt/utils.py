@@ -9,11 +9,12 @@ class PatchLevelDecoder(PreTrainedModel):
     A Patch-level Decoder model for generating patch features in an auto-regressive manner. 
     It inherits PreTrainedModel from transformers.
     """
-    def __init__(self, config):
+    def __init__(self, config, patch_size):
         super().__init__(config)
-        self.patch_embedding = torch.nn.Linear(PATCH_SIZE * (256+1), config.n_embd)
+        self.patch_embedding = torch.nn.Linear(patch_size * (256+1), config.n_embd)
         torch.nn.init.normal_(self.patch_embedding.weight, std=0.02)
         self.base = GPT2Model(config)
+        self.patch_size = patch_size
 
     def forward(self,
                 patches: torch.Tensor,
@@ -25,7 +26,7 @@ class PatchLevelDecoder(PreTrainedModel):
         :return: the encoded patches
         """
         patches = torch.nn.functional.one_hot(patches, num_classes=256+1).to(self.dtype)
-        patches = patches.reshape(len(patches), -1, PATCH_SIZE * (256+1))
+        patches = patches.reshape(len(patches), -1, self.patch_size * (256+1))
         patches = self.patch_embedding(patches.to(self.device))
 
         if masks==None:
@@ -39,11 +40,12 @@ class ByteLevelDecoder(PreTrainedModel):
     A Byte-level Decoder model for generating the bytes within each patch in an auto-regressive manner
     based on the encoded patch features. It inherits PreTrainedModel from transformers.
     """
-    def __init__(self, config):
+    def __init__(self, config, patch_sampling_batch_size):
         super().__init__(config)
         self.special_token_id = 256
         self.base = GPT2LMHeadModel(config)
-
+        self.patch_sampling_batch_size = patch_sampling_batch_size
+        
     def forward(self,
                 encoded_patches: torch.Tensor,
                 target_patches: torch.Tensor):
@@ -57,10 +59,10 @@ class ByteLevelDecoder(PreTrainedModel):
         target_patches = torch.cat((torch.ones_like(target_patches[:,0:1])*self.special_token_id, target_patches), dim=1)
 
         # select patches
-        if PATCH_SAMPLING_BATCH_SIZE!=0 and PATCH_SAMPLING_BATCH_SIZE<target_patches.shape[0]:
+        if self.patch_sampling_batch_size!=0 and self.patch_sampling_batch_size<target_patches.shape[0]:
             indices = list(range(len(target_patches)))
             random.shuffle(indices)
-            selected_indices = sorted(indices[:PATCH_SAMPLING_BATCH_SIZE])
+            selected_indices = sorted(indices[:self.patch_sampling_batch_size])
 
             target_patches = target_patches[selected_indices,:]
             encoded_patches = encoded_patches[selected_indices,:]
@@ -108,11 +110,13 @@ class bGPTLMHeadModel(PreTrainedModel):
     The byte-level decoder is used to generate the bytes within each patch in an auto-regressive manner.
     It inherits PreTrainedModel from transformers.
     """
-    def __init__(self, encoder_config, decoder_config):
+    def __init__(self, encoder_config, decoder_config, patch_size, patch_sampling_batch_size):
         super().__init__(encoder_config)
         self.special_token_id = 256
-        self.patch_level_decoder = PatchLevelDecoder(encoder_config)
-        self.byte_level_decoder = ByteLevelDecoder(decoder_config)
+        self.patch_level_decoder = PatchLevelDecoder(encoder_config, patch_size)
+        self.byte_level_decoder = ByteLevelDecoder(decoder_config, patch_sampling_batch_size)
+        self.patch_size = patch_size
+        self.patch_sampling_batch_size = patch_sampling_batch_size
 
     def forward(self,
                 patches: torch.Tensor,
@@ -123,7 +127,7 @@ class bGPTLMHeadModel(PreTrainedModel):
         :param masks: the masks for the patches
         :return: the decoded patches
         """
-        patches = patches.reshape(len(patches), -1, PATCH_SIZE)
+        patches = patches.reshape(len(patches), -1, self.patch_size)
         encoded_patches = self.patch_level_decoder(patches, masks)["last_hidden_state"]
         
         left_shift_masks = masks * (masks.flip(1).cumsum(1).flip(1) > 1)
@@ -147,11 +151,11 @@ class bGPTLMHeadModel(PreTrainedModel):
         :param temperature: the temperature for sampling
         :return: the generated patches
         """
-        if patches.shape[-1]%PATCH_SIZE!=0:
-            tokens = patches[:,:,-(patches.shape[-1]%PATCH_SIZE):].squeeze(0, 1)
+        if patches.shape[-1]%self.patch_size!=0:
+            tokens = patches[:,:,-(patches.shape[-1]%self.patch_size):].squeeze(0, 1)
             tokens = torch.cat((torch.tensor([self.special_token_id], device=self.device), tokens), dim=-1)
-            patches = patches[:,:,:-(patches.shape[-1]%PATCH_SIZE)]
-        patches = patches.reshape(len(patches), -1, PATCH_SIZE)
+            patches = patches[:,:,:-(patches.shape[-1]%self.patch_size)]
+        patches = patches.reshape(len(patches), -1, self.patch_size)
         encoded_patches = self.patch_level_decoder(patches)["last_hidden_state"]
         tokens = torch.tensor([self.special_token_id], device=self.device)
         generated_patch = []            
@@ -162,7 +166,7 @@ class bGPTLMHeadModel(PreTrainedModel):
             prob = top_p_sampling(prob, top_p=top_p, return_probs=True)
             token = temperature_sampling(prob, temperature=temperature)
             generated_patch.append(token)
-            if token == self.special_token_id or len(tokens) >= PATCH_SIZE:
+            if token == self.special_token_id or len(tokens) >= self.patch_size:
                 break
             else:
                 tokens = torch.cat((tokens, torch.tensor([token], device=self.device)), dim=0)
@@ -177,10 +181,11 @@ class bGPTForClassification(PreTrainedModel):
     Then, the patch-level representation is used to classify the patches.
     It inherits PreTrainedModel from transformers.
     """
-    def __init__(self, encoder_config, label_size):
+    def __init__(self, encoder_config, label_size, patch_size):
         super().__init__(encoder_config)
-        self.patch_level_decoder = PatchLevelDecoder(encoder_config)
+        self.patch_level_decoder = PatchLevelDecoder(encoder_config, patch_size)
         self.classifier = torch.nn.Linear(encoder_config.n_embd, label_size)
+        self.patch_size = patch_size
         torch.nn.init.normal_(self.classifier.weight, std=0.02)
 
     def forward(self,
@@ -190,7 +195,7 @@ class bGPTForClassification(PreTrainedModel):
         :param patches: the patches to be both encoded and decoded
         :return: the logits generated by the classifier
         """
-        patches = patches.reshape(len(patches), -1, PATCH_SIZE)
+        patches = patches.reshape(len(patches), -1, self.patch_size)
         
         encoded_patches = self.patch_level_decoder(patches)["last_hidden_state"]
         encoded_patches = torch.mean(encoded_patches, dim=1)
