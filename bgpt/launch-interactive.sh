@@ -20,4 +20,4 @@ module load rocm/5.2
 # mkdir "$SLURM_JOB_NAME"/checkpoints
 # mkdir "$SLURM_JOB_NAME"/dataloaders
 
-python train-gen.py --train-config-path ${CONFIG_PATH}
+python train-gen-distributed.py --train-config-path ${CONFIG_PATH}

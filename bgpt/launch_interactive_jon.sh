@@ -19,4 +19,4 @@ export MASTER_IP=`ip -f inet addr show hsn0 | sed -En -e 's/.*inet ([0-9.]+).*/\
 # mkdir "$SLURM_JOB_NAME"/checkpoints
 # mkdir "$SLURM_JOB_NAME"/dataloaders
 
-srun torchrun --nnodes=1 --nproc_per_node=1 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py --train-config-path ${CONFIG_PATH}
+srun torchrun --nnodes=1 --nproc_per_node=1 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen-distributed.py --train-config-path ${CONFIG_PATH}

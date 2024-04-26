@@ -18,4 +18,4 @@ export MASTER_IP=localhost
 # export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 
 # torchrun --nnodes=1 --nproc_per_node=1 --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py --train-config-path ${CONFIG_PATH}
-torchrun --nnodes=1 --nproc_per_node=1 --rdzv_id=1337 --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen.py --train-config-path ${CONFIG_PATH}
+torchrun --nnodes=1 --nproc_per_node=1 --rdzv_id=1337 --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29400 train-gen-distributed.py --train-config-path ${CONFIG_PATH}
