@@ -7,7 +7,7 @@ import random
 import numpy as np
 from copy import deepcopy
 from utils import *
-from config import *
+from config_og import *
 from tqdm import tqdm
 from datetime import datetime
 from torchmetrics import AUROC
@@ -39,7 +39,7 @@ torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-batch_size = 1
+#BATCH_SIZE = 1
     
 def collate_batch(input_patches):
 
@@ -144,12 +144,12 @@ def process_one_batch(batch):
     loss = loss_fn(logits, labels)
     prediction = torch.argmax(logits, dim=1)
     acc_num = torch.sum(prediction==labels)
-    
-    return loss, acc_num, labels, prediction
+    accuracy = acc_num/labels.shape[0]
+    return loss, acc_num, labels.cpu(), prediction.detach().cpu(), accuracy
 
 # do one epoch for training
-def train_epoch(total_train_iters = 1, logging_frequency = 100):
-    
+def train_epoch(global_iters = 1, logging_frequency = 100):
+    total_iters = global_iters
     tqdm_train_set = tqdm(train_set)
     total_train_loss = 0
     total_acc_num = 0
@@ -160,41 +160,42 @@ def train_epoch(total_train_iters = 1, logging_frequency = 100):
     for batch in tqdm_train_set:
         if is_autocast:
             with autocast():
-                loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
+                loss, acc_num, batch_y_true, batch_y_pred, accuracy = process_one_batch(batch)
             scaler.scale(loss).backward()
             
             scaler.step(optimizer)
             scaler.update()
         else:
-            loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
+            loss, acc_num, batch_y_true, batch_y_pred, accuracy = process_one_batch(batch)
             loss.backward()
             optimizer.step()
         
-        
         lr_scheduler.step()
         model.zero_grad(set_to_none=True)
-        total_train_loss += loss.item()
+        loss_train = loss.item()
+        total_train_loss += loss_train
         total_acc_num += acc_num.item()
         
         y_true.append(batch_y_true)
-        y_pred.append(batch_y_pred.detach().cpu())
+        y_pred.append(batch_y_pred)
         
         if global_rank == 0:
             if iter_idx % logging_frequency == 0:
                 wandb.log({
-                    "train_loss": total_train_loss,
-                    "total_train_iters": total_train_iters,
-                    "total_acc_num": total_acc_num,
-                }, step=total_train_iters)
+                    "train_loss": loss_train,
+                    "total_train_iters": global_iters,
+                    "train_batch_accuracy": accuracy,
+                }, step=global_iters)
         
-        tqdm_train_set.set_postfix({str(global_rank)+'_train_acc': total_acc_num / (iter_idx*batch_size)})
+        tqdm_train_set.set_postfix({str(global_rank)+'_train_acc': total_acc_num / (iter_idx*BATCH_SIZE)})
         iter_idx += 1
-        total_train_iters +=1 
-    
-    return total_acc_num / ((iter_idx-1)*batch_size), total_train_iters, y_true, y_pred
+        total_iters +=1 
+        avg_train_loss = total_train_loss / (iter_idx - 1)
+    return total_acc_num / ((iter_idx-1)*BATCH_SIZE), avg_train_loss, total_iters, y_true, y_pred
 
 # do one epoch for eval
-def eval_epoch(total_val_iters = 1, logging_frequency = 100):
+def eval_epoch(global_iters = 1, logging_frequency = 100):
+    total_iters = global_iters
     tqdm_eval_set = tqdm(eval_set)
     total_eval_loss = 0
     total_acc_num = 0
@@ -206,22 +207,24 @@ def eval_epoch(total_val_iters = 1, logging_frequency = 100):
     # Evaluate data for one epoch
     for batch in tqdm_eval_set: 
         with torch.no_grad():
-            loss, acc_num, batch_y_true, batch_y_pred = process_one_batch(batch)
-            total_eval_loss += loss.item()
+            loss, acc_num, batch_y_true, batch_y_pred, accuracy = process_one_batch(batch)
+            loss_val = loss.item()
+            total_eval_loss += loss_val
             total_acc_num += acc_num.item()
             y_true.append(batch_y_true)
-            y_pred.append(batch_y_pred.detach().cpu())
+            y_pred.append(batch_y_pred)
             if global_rank == 0:
                 if iter_idx % logging_frequency == 0:
                     wandb.log({
-                        "eval_loss": total_eval_loss,
-                        "total_val_iters": total_val_iters,
-                        "total_acc_num": total_acc_num,
-                    }, step=total_val_iters)
-        tqdm_eval_set.set_postfix({str(global_rank)+'_eval_acc': total_acc_num / (iter_idx*batch_size)})
+                        "eval_loss": loss_val,
+                        "total_val_iters": global_iters,
+                        "val_batch_accuracy": accuracy,
+                    }, step=global_iters)
+        tqdm_eval_set.set_postfix({str(global_rank)+'_eval_acc': total_acc_num / (iter_idx*BATCH_SIZE)})
         iter_idx += 1
-        total_val_iters += 1
-    return total_acc_num / ((iter_idx-1)*batch_size), total_val_iters, y_true, y_pred
+        total_iters += 1
+        avg_eval_loss = total_eval_loss / (iter_idx - 1)
+    return total_acc_num / ((iter_idx-1)*BATCH_SIZE), avg_eval_loss, total_iters, y_true, y_pred
 
 # train and eval
 if __name__ == "__main__":
@@ -256,8 +259,11 @@ if __name__ == "__main__":
     train_sampler = DistributedSampler(train_set, num_replicas=world_size, rank=global_rank)
     eval_sampler = DistributedSampler(eval_set, num_replicas=world_size, rank=global_rank)
 
-    train_set = DataLoader(train_set, batch_size=batch_size, collate_fn=collate_batch, sampler=train_sampler, shuffle = (train_sampler is None))
-    eval_set = DataLoader(eval_set, batch_size=batch_size, collate_fn=collate_batch, sampler=eval_sampler, shuffle = (train_sampler is None))
+    train_set = DataLoader(train_set, batch_size=BATCH_SIZE, collate_fn=collate_batch, sampler=train_sampler, shuffle = (train_sampler is None))
+    eval_set = DataLoader(eval_set, batch_size=BATCH_SIZE, collate_fn=collate_batch, sampler=eval_sampler, shuffle = (train_sampler is None))
+
+    # train_set = DataLoader(train_set, batch_size=BATCH_SIZE, collate_fn=collate_batch, shuffle = True)
+    # eval_set = DataLoader(eval_set, batch_size=BATCH_SIZE, collate_fn=collate_batch, shuffle = False)
 
     lr_scheduler = get_scheduler(
         name="cosine",
@@ -268,9 +274,9 @@ if __name__ == "__main__":
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     
-    if LOAD_FROM_PRE_CHECKPOINT and os.path.exists(PRE_WEIGHTS_PATH):
+    if LOAD_FROM_PRETRAINED and os.path.exists(PRETRAINED_PATH):
         # Load checkpoint to CPU
-        checkpoint = torch.load(PRE_WEIGHTS_PATH, map_location='cpu')
+        checkpoint = torch.load(PRETRAINED_PATH, map_location='cpu')
 
         byte_config = GPT2Config(num_hidden_layers=BYTE_NUM_LAYERS, 
                             max_length=PATCH_SIZE+1, 
@@ -328,22 +334,25 @@ if __name__ == "__main__":
         best_epoch = 0
         max_eval_acc = 0
 
-    total_train_iters = 1
-    total_val_iters = 1
+    global_iters = 1
+
     for epoch in range(1, NUM_EPOCHS+1-pre_epoch):
         train_sampler.set_epoch(epoch)
         eval_sampler.set_epoch(epoch)
         epoch += pre_epoch
         print('-' * 21 + "Epoch " + str(epoch) + '-' * 21)
-        train_acc, total_train_iters, y_true, y_pred = train_epoch(total_train_iters=total_train_iters)
-        y_true_epoch = torch.cat(y_true, dim=0)
-        y_pred_epoch = torch.cat(y_pred, dim=0)
-        train_auroc_score = auroc(y_pred, y_true)
+        train_acc, train_loss_epoch, global_iters, y_true, y_pred = train_epoch(global_iters=global_iters+1, logging_frequency=1)
         
-        eval_acc, total_val_iters, y_true, y_pred = eval_epoch(total_val_iters=total_val_iters)
         y_true_epoch = torch.cat(y_true, dim=0)
         y_pred_epoch = torch.cat(y_pred, dim=0)
-        val_auroc_score = auroc(y_pred, y_true)
+        
+        
+        train_auroc_score = auroc(y_pred_epoch, y_true_epoch)
+        
+        eval_acc, eval_loss_epoch, global_iters, y_true, y_pred = eval_epoch(global_iters=global_iters, logging_frequency=1)
+        y_true_epoch = torch.cat(y_true, dim=0)
+        y_pred_epoch = torch.cat(y_pred, dim=0)
+        val_auroc_score = auroc(y_pred_epoch, y_true_epoch)
         
         if global_rank==0:
             with open(LOGS_PATH,'a') as f:
@@ -352,12 +361,19 @@ if __name__ == "__main__":
             if global_rank == 0:
                 wandb.log({
                         "epoch_avg_train_acc": train_acc,
-                        "epoch_avg_eval_acc": eval_acc,
+                        # "epoch_avg_eval_acc": eval_acc,
+                        "epoch_avg_train_loss": train_loss_epoch,
+                        # "epoch_avg_val_loss": eval_loss_epoch,
                         "epoch": epoch,
-                        "total_iters": total_train_iters,
+                        # "total_iters": total_train_iters,
                         "epoch_train_auroc_score": train_auroc_score,
+                        # "epoch_val_auroc_score": val_auroc_score,
+                    }, step=global_iters)
+                wandb.log({
+                        "epoch_avg_eval_acc": eval_acc,
+                        "epoch_avg_val_loss": eval_loss_epoch,
                         "epoch_val_auroc_score": val_auroc_score,
-                    }, step=total_train_iters)
+                    }, step=global_iters)
             
             if eval_acc > max_eval_acc:
                 best_epoch = epoch

@@ -13,13 +13,13 @@ def copy_files(row, base_path, target_dir):
     #     print(row)
 
 
-    mp3_file = f"{row['chunk_path']}.mp3"
+    #mp3_file = f"{row['chunk_path']}.mp3"
     txt_file = f"{row['chunk_path']}.txt"
-    src_mp3 = os.path.join(base_path, mp3_file)
+    #src_mp3 = os.path.join(base_path, mp3_file)
     src_txt = os.path.join(base_path, txt_file)
-    target_mp3 = os.path.join(base_path, target_dir, mp3_file)
+    #target_mp3 = os.path.join(base_path, target_dir, mp3_file)
     target_txt = os.path.join(base_path, target_dir, txt_file)
-    shutil.copy(src_mp3, target_mp3)
+    #shutil.copy(src_mp3, target_mp3)
     shutil.copy(src_txt, target_txt)
 
 def split_and_copy_files(base_path, tsv_file):
@@ -54,6 +54,6 @@ def split_and_copy_files(base_path, tsv_file):
     for _, row in test.iterrows():
         copy_files(row, base_path, 'test')
 
-base_path = '/Users/minabeiramy/workspace/byte_models/cv-corpus-17.0-delta-2024-03-15/chunk_dir'
+base_path = '/home/mila/m/mina.beiramy/scratch/bgpt/cv-corpus-17.0-delta-2024-03-15/chunk_dir'
 tsv_file = f'{base_path}/chunks_labels.tsv'
 split_and_copy_files(base_path, tsv_file)
