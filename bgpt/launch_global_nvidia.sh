@@ -3,7 +3,7 @@
 SRC_DIR="/nfs/scratch/jonathan/byte_models"
 
 # Number of jobs to submit
-NUM_JOBS=3
+NUM_JOBS=2
 NUM_NODES=1
 NUM_GPUS_PER_NODE=4
 CPUS_PER_TASK=6

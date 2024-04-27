@@ -2,7 +2,7 @@ train_folders:
   - "/nfs/scratch/jonathan/byte_models/data/imagenet-1k-64x64/train"
 eval_folders:
   - "/nfs/scratch/jonathan/byte_models/data/imagenet-1k-64x64/validation"
-base_dir: "/nfs/scratch/jonathan/byte_models/imagenet-1k-64x64-classification-scratch"
+base_dir: "/nfs/scratch/jonathan/byte_models/imagenet-1k-64x64-classification-ft"
 weights_path: "weights.pth"
 pre_weights_path: /nfs/scratch/jonathan/byte_models/imagenet-1k-64x64/checkpoints/latest.pth
 logs_path: "log.txt"
@@ -17,8 +17,8 @@ num_epochs: 10
 learning_rate: 0.0001
 batch_size: 1
 # accumulation_steps: 1
-# patch_sampling_batch_size: 0
-load_from_pre_checkpoint: false
+patch_sampling_batch_size: 0
+load_from_pre_checkpoint: true
 # checkpoint_frequency: 10000
 logging_frequency: 500
 first_launch: true
@@ -27,4 +27,4 @@ wandb:
   proj_name: byte_models
   entity: jonathanlimsc
   mode: online # put 'offline' if you don't want it to upload to WanB server
-  name: imagenet-1k-64x64-classification-scratch
+  name: imagenet-1k-64x64-classification-ft

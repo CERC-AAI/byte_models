@@ -142,6 +142,7 @@ def train_epoch(model,
                 scaler,
                 optimizer,
                 loss_fn,
+                epoch,
                 batch_size,
                 logging_frequency,
                 global_total_iters=1,
@@ -177,6 +178,7 @@ def train_epoch(model,
                 wandb.log({
                 "train_loss": loss_val,
                 "total_iters": total_iters,
+                "epoch": epoch,
                 }, step=total_iters)
         tqdm_train_set.set_postfix({str(global_rank)+'_train_acc': total_acc_num / max((iter_idx*batch_size), 1)})
         iter_idx += 1
@@ -245,6 +247,7 @@ def main(args):
     NUM_EPOCHS = config.get("num_epochs")
     LEARNING_RATE = config.get("learning_rate")
     BATCH_SIZE = config.get("batch_size")
+    PATCH_SAMPLING_BATCH_SIZE = config.get("patch_sampling_batch_size")
     
     
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")   
@@ -341,7 +344,7 @@ def main(args):
                             hidden_size=HIDDEN_SIZE,
                             n_head=HIDDEN_SIZE//64,
                             vocab_size=256+1)
-        pretrained_model = bGPTLMHeadModel(patch_config, byte_config)
+        pretrained_model = bGPTLMHeadModel(patch_config, byte_config, PATCH_SIZE, PATCH_SAMPLING_BATCH_SIZE)
         pretrained_model.load_state_dict(checkpoint['model'])
 
         # Here, model is assumed to be on GPU
@@ -405,6 +408,7 @@ def main(args):
                                                                 scaler,
                                                                 optimizer,
                                                                 loss_fn,
+                                                                epoch,
                                                                 BATCH_SIZE,
                                                                 LOGGING_FREQUENCY,
                                                                 total_iters+1,
