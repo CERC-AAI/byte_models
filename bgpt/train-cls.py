@@ -231,7 +231,7 @@ if __name__ == "__main__":
     current_time = datetime.now()
     run_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     if global_rank == 0:
-        wandb.init(project="null_cls", entity="mina-beiramy", name=f"bgpt_mozilla_cls_{run_name}")
+        wandb.init(project="null_cls", entity=ENTITY_NAME, name=f"{RUN_NAME}_{run_name}")
         
         wandb.config.update({
             "TRAIN_FOLDERS": TRAIN_FOLDERS,

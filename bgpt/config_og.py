@@ -8,7 +8,7 @@ TRAIN_FOLDERS = [
                 # "speech_commands8K/train", 
                 #"irishman/train",
                 #"/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy",
-                "/home/mila/m/mina.beiramy/scratch/bgpt/data/mix",
+                #"/home/mila/m/mina.beiramy/scratch/bgpt/data/mix",
                 # "cpu_states/train",
                  ]     # Folder containing training data
 EVAL_FOLDERS = [
@@ -20,7 +20,8 @@ EVAL_FOLDERS = [
                 # "speech_commands8K/test", 
                 #"irishman/test",
                 #"/home/mila/m/mina.beiramy/scratch/bgpt/data/dummy_val",
-                "/home/mila/m/mina.beiramy/scratch/bgpt/data/mix_val",
+                #"/home/mila/m/mina.beiramy/scratch/bgpt/data/mix_val",
+                
                 # "cpu_states/test",
                 ]                                               # Folder containing evaluation data
 
@@ -57,3 +58,8 @@ NUM_SAMPLES = 100                                               # Number of samp
 TOP_K = 0                                                       # Top k for sampling
 TOP_P = 1.                                                      # Top p for sampling
 TEMPERATURE = 1                                                 # Temperature for sampling
+
+# wandb Configuration:                              
+ENTITY_NAME = 'mina-beiramy'                                    # username of your account
+PROJECT_NAME = 'byte_models'                                    # Name of the project logs get saved to
+RUN_NAME = 'bgpt_mozilla_small_cls'                             # desired name for your current run
