@@ -1,6 +1,6 @@
 import torch
 import random
-from config import *
+from config_og import *
 from transformers import GPT2Model, GPT2LMHeadModel, PreTrainedModel
 from samplings import top_p_sampling, top_k_sampling, temperature_sampling
 
