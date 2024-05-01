@@ -11,7 +11,7 @@
 SRC_DIR="/home/jonathan/cerc/byte_models/bgpt"
 
 # Change to config YAML path
-CONFIG_PATH="/home/jonathan/cerc/byte_models/bgpt/configs/config_110M_image_mnist_nvidia.yaml"
+CONFIG_PATH="/home/jonathan/cerc/byte_models/bgpt/configs/config_110M_multimodal_mnist.yaml"
 
 NUM_NODES=1
 NUM_GPUS_PER_NODE=1
