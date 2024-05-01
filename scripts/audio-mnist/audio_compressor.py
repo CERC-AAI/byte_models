@@ -2,6 +2,7 @@ import os
 from pydub import AudioSegment
 from multiprocessing import Pool
 from tqdm import tqdm
+import argparse
 
 def reduce_file_size(input_file, base_directory):
     # Define the new directory structure by appending '_r' to the original directory name
@@ -56,16 +57,23 @@ def find_audio_files(directory):
     return audio_files
 
 def main():
-    base_directory = "/network/scratch/m/mina.beiramy/bgpt/audio-mnist"  # Set this to the base directory where your 'train', 'test', 'val' folders are located
-    directories = [os.path.join(base_directory, d) for d in ["train", "test", "val"]]  # Directories containing audio files
+    parser = argparse.ArgumentParser(description="Compress audios.")
+    parser.add_argument("--base_dir", type=str, help="Specify where audio mnist data is")
+
+    kargs = parser.parse_args()
+    #base_directory = "/network/scratch/m/mina.beiramy/bgpt/audio-mnist"  # Set this to the base directory where your 'train', 'test', 'val' folders are located
+    directories = [os.path.join(kargs.base_dir, d) for d in ["train", "test", "val"]]  # Directories containing audio files
     all_audio_files = []
     for directory in directories:
         all_audio_files.extend(find_audio_files(directory))
 
     # Process files in parallel
-    args = [(file, base_directory) for file in all_audio_files]
+    args = [(file, kargs.base_dir) for file in all_audio_files]
     with Pool(processes=os.cpu_count()) as pool:
         list(tqdm(pool.starmap(reduce_file_size, args), total=len(all_audio_files), desc="Processing audio files"))
 
 if __name__ == "__main__":
     main()
+
+
+# python audio_compressor.py --base_dir /network/scratch/m/mina.beiramy/bgpt/audio-mnist

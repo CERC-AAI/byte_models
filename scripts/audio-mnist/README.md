@@ -8,8 +8,8 @@ cd {path/to}/byte_models/scripts/audio-mnist
 git clone git@github.com:soerenab/AudioMNIST.git
 ```
 
-#### step 1-2:
-make a directory called `audio-mnist` in your scratch folder and copy the data of audio-mnist repo  to your scratch:
+#### step 1-2(optional):
+Your can make a directory called `audio-mnist` in your scratch folder and copy the `data` direcory of audio-mnist repo  to your scratch:
 ```
 mkdir -p /{your/scratch/folder}/audio-mnist
 cd path/to/byte_models/scripts/audio-mnist/AudioMNIST
@@ -29,7 +29,7 @@ mkdir -p chkp
 split the data: **(change the path inside if required)**
 ```
 cd {path/to}/byte_models/scripts/audio-mnist
-python simple_split.py
+# python simple_split.py --root_dir {/audio-mnist/data} --output_path {train/test/val/base/directory}
 ```
 These scripts split the data into `train`, `test` and `val`.
 
@@ -37,7 +37,7 @@ These scripts split the data into `train`, `test` and `val`.
 compress the audio: **(change the path inside if required)**
 ```
 {path/to}/byte_models/scripts/audio-mnist
-python audio_compressor.py
+# python audio_compressor.py --base_dir {your/audio-mnist-data}
 ```
 
 ### Step4:
