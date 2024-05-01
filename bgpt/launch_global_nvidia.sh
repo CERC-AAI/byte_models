@@ -5,7 +5,7 @@ SRC_DIR="/nfs/scratch/jonathan/byte_models"
 # Number of jobs to submit
 NUM_JOBS=2
 NUM_NODES=1
-NUM_GPUS_PER_NODE=4
+NUM_GPUS_PER_NODE=2
 CPUS_PER_TASK=6
 MEM="32G"
 TIME_LIMIT_PER_JOB="24:00:00"
@@ -19,9 +19,9 @@ do
 
   # Submit job and capture the job ID
   if [ "$DEPENDENCY" == "none" ]; then
-    JOB_SUBMIT_OUTPUT=$(sbatch --job-name=$JOB_NAME --output=${SRC_DIR}/logs/%x-%j.out --error=${SRC_DIR}/logs/%x-%j.err --time=${TIME_LIMIT_PER_JOB} --nodes=${NUM_NODES} --gres=gpu:A100:${NUM_GPUS_PER_NODE} --cpus-per-task=${CPUS_PER_TASK} --mem=${MEM} conditional_launch_nvidia.sh)
+    JOB_SUBMIT_OUTPUT=$(sbatch --job-name=$JOB_NAME -p student --output=${SRC_DIR}/logs/%x-%j.out --error=${SRC_DIR}/logs/%x-%j.err --time=${TIME_LIMIT_PER_JOB} --nodes=${NUM_NODES} --gres=gpu:A100:${NUM_GPUS_PER_NODE} conditional_launch_nvidia.sh)
   else
-    JOB_SUBMIT_OUTPUT=$(sbatch --dependency=afterany:$DEPENDENCY --job-name=$JOB_NAME --output=${SRC_DIR}/logs/%x-%j.out --error=${SRC_DIR}/logs/%x-%j.err --time=${TIME_LIMIT_PER_JOB} --nodes=${NUM_NODES} --gres=gpu:A100:${NUM_GPUS_PER_NODE} --cpus-per-task=${CPUS_PER_TASK} --mem=${MEM} conditional_launch_nvidia.sh --load-from-checkpoint)
+    JOB_SUBMIT_OUTPUT=$(sbatch --dependency=afterany:$DEPENDENCY --job-name=$JOB_NAME -p student --output=${SRC_DIR}/logs/%x-%j.out --error=${SRC_DIR}/logs/%x-%j.err --time=${TIME_LIMIT_PER_JOB} --nodes=${NUM_NODES} --gres=gpu:A100:${NUM_GPUS_PER_NODE} conditional_launch_nvidia.sh --load-from-checkpoint)
   fi
 
   # Extract job ID from the submission output

@@ -3,19 +3,18 @@
 #SBATCH -o /nfs/scratch/jonathan/byte_models/logs/%x-%j.out
 #SBATCH --error=/nfs/scratch/jonathan/byte_models/logs/%x-%j.err
 #SBATCH -N 1
-#SBATCH --cpus-per-task 6
-#SBATCH --gres=gpu:A100:4
-#SBATCH --mem=32G
+#SBATCH --gres=gpu:A100:1
 #SBATCH -t 24:00:00
+#SBATCH -p student
 
 # Define the source and target directories
 SRC_DIR="/home/jonathan/cerc/byte_models/bgpt"
 
 # Change to config YAML path
-CONFIG_PATH="/home/jonathan/cerc/byte_models/bgpt/configs/config_110M_imagenet_cls_nvidia.yaml"
+CONFIG_PATH="/home/jonathan/cerc/byte_models/bgpt/configs/config_110M_image_mnist_cls_nvidia.yaml"
 
 NUM_NODES=1
-NUM_GPUS_PER_NODE=4
+NUM_GPUS_PER_NODE=1
 
 cd "$SRC_DIR"
 
