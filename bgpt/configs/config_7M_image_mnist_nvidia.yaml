@@ -1,0 +1,31 @@
+train_folders:
+  - "/nfs/scratch/jonathan/byte_models/data/image_mnist/train"
+  - "/nfs/scratch/jonathan/byte_models/data/image_mnist/validation"
+  - "/nfs/scratch/jonathan/byte_models/data/image_mnist/test"
+eval_folders: []
+base_dir: "/nfs/scratch/jonathan/byte_models/image-mnist-gen-small"
+weights_path: "weights.pth"
+pre_weights_path: null
+logs_path: "log.txt"
+checkpoint_path: "checkpoints"
+dataloader_path: "dataloaders"
+patch_size: 16
+patch_length: 512
+byte_num_layers: 2
+patch_num_layers: 6
+hidden_size: 256
+num_epochs: 50
+learning_rate: 0.0001
+batch_size: 26
+accumulation_steps: 1
+patch_sampling_batch_size: 0
+load_from_pre_checkpoint: false
+checkpoint_frequency: 2000
+logging_frequency: 500
+first_launch: true
+verbose: false
+wandb:
+  proj_name: byte_models
+  entity: jonathanlimsc
+  mode: online # put 'offline' if you don't want it to upload to WanB server
+  name: image-mnist-gen-small
