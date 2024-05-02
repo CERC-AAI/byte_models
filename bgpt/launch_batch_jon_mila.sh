@@ -13,7 +13,7 @@
 SRC_DIR="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt"
 
 # Change to config YAML path
-CONFIG_PATH="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt/configs/config_110M_multimodal_mnist.yaml"
+CONFIG_PATH="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt/configs/config_7M_multimodal_mnist.yaml"
 
 NUM_NODES=1
 NUM_GPUS_PER_NODE=1
