@@ -1,0 +1,15 @@
+mode: "generate"
+input_dir: null 
+input_extension: null
+output_extension: "bmp"
+output_dir: "/nfs/scratch/jonathan/byte_models/image-mnist-gen/inference"
+model_weights_path: "/nfs/scratch/jonathan/byte_models/image-mnist-gen/checkpoints/latest.pth"
+num_samples: 5
+top_k: 5
+top_p: 5
+temperature: 0.3
+patch_size: 16
+patch_length: 512
+byte_num_layers: 3
+patch_num_layers: 12
+hidden_size: 768

@@ -14,7 +14,7 @@ patch_length: 512
 byte_num_layers: 2
 patch_num_layers: 6
 hidden_size: 256
-num_epochs: 50
+num_epochs: 30
 learning_rate: 0.0001
 batch_size: 26
 accumulation_steps: 1
