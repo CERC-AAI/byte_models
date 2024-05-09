@@ -122,17 +122,64 @@ def read_bytes(filename,
 
 
 class ByteDataset(Dataset):
-    def __init__(self, filenames, patch_size, patch_length):
-        self.filenames = filenames
+    def __init__(self, filenames, patch_size, patch_length, conversion_mode=None):
         self.patch_size = patch_size
         self.patch_length = patch_length
+        self.conversion_mode = conversion_mode
+        
+        if self.conversion_mode is None:
+            print(f"Regular Training Mode, loading {len(filenames)} files")
+            self.filenames = filenames
+        elif "->" in self.conversion_mode:
+            print(f"Unidirectional Conversion Mode: {self.conversion_mode}, loading {len(filenames)} files")
+            input_ext = self.conversion_mode.split("->")[0]
+            target_ext = self.conversion_mode.split("->")[1]
+
+            self.filenames = []
+            for filename in filenames:
+                if filename.split('.')[-1]==input_ext:
+                    target_filename = filename[:-(len(input_ext))] + target_ext
+                    if os.path.exists(target_filename):
+                        self.filenames.append((filename, target_filename))
+        elif "&" in self.conversion_mode:
+            print(f"Bidirectional Conversion Mode: {self.conversion_mode}, loading {len(filenames)} files")
+            input_ext = self.conversion_mode.split("&")[0]
+            target_ext = self.conversion_mode.split("&")[1]
+
+            self.filenames = []
+            for filename in filenames:
+                if filename.split('.')[-1]==input_ext:
+                    target_filename = filename[:-(len(input_ext))] + target_ext
+                    if os.path.exists(target_filename):
+                        self.filenames.append((filename, target_filename))
+                elif filename.split('.')[-1]==target_ext:
+                    input_filename = filename[:-(len(target_ext))] + input_ext
+                    if os.path.exists(input_filename):
+                        self.filenames.append((input_filename, filename))
+        else:
+            raise ValueError("Invalid Conversion Mode, please check the config file")
 
     def __len__(self):
         return len(self.filenames)
 
     def __getitem__(self, idx):
-        filename = self.filenames[idx]
-        file_bytes, file_masks = read_bytes(filename, self.patch_size, self.patch_length)
+        if self.conversion_mode is None:
+            filename = self.filenames[idx]
+            file_bytes, file_masks = read_bytes(filename, self.patch_size, self.patch_length)
+        else:
+            input_filename, target_filename = self.filenames[idx]
+            input_bytes, input_masks = read_bytes(input_filename, self.patch_size, self.patch_length)
+            target_bytes, target_masks = read_bytes(target_filename, self.patch_size, self.patch_length)
+
+            file_bytes = input_bytes[:-self.patch_size] + target_bytes
+            file_masks = input_masks[:-1] + target_masks
+
+            context_length = self.patch_length*self.patch_size
+            if len(file_bytes) > context_length:
+                print(f"Warning: {input_filename} and {target_filename} are too long after concatenation, truncating to {context_length} bytes.")
+                file_bytes = file_bytes[:context_length]
+                file_masks = file_masks[:self.patch_length]
+
 
         file_bytes = torch.tensor(file_bytes, dtype=torch.long)
         file_masks = torch.tensor(file_masks, dtype=torch.long)
@@ -341,6 +388,7 @@ def main(args):
     BATCH_SIZE = config.get("batch_size")
     ACCUMULATION_STEPS = config.get("accumulation_steps")
     PATCH_SAMPLING_BATCH_SIZE = config.get("patch_sampling_batch_size")
+    CONVERSION_MODE = config.get("conversion_mode", None)
     
     LOAD_FROM_PRE_CHECKPOINT = config.get("load_from_pre_checkpoint")
     CHECKPOINT_FREQUENCY = config.get("checkpoint_frequency")
@@ -483,8 +531,8 @@ def main(args):
     print(f"Number of training files: {len(train_files)}")
     eval_files = eval_files[:eval_batch_nums * batch_size]
 
-    train_dataset = ByteDataset(train_files, PATCH_SIZE, PATCH_LENGTH)
-    eval_dataset = ByteDataset(eval_files, PATCH_SIZE, PATCH_LENGTH)
+    train_dataset = ByteDataset(train_files, PATCH_SIZE, PATCH_LENGTH, CONVERSION_MODE)
+    eval_dataset = ByteDataset(eval_files, PATCH_SIZE, PATCH_LENGTH, CONVERSION_MODE)
 
     # Initialize DistributedSampler
     train_sampler = CustomDistributedSampler(train_dataset, num_replicas=world_size, rank=global_rank,

@@ -1,0 +1,15 @@
+mode: "convert"
+input_dir: "/network/scratch/m/mina.beiramy/bgpt_shared/data/abc-midi/test"
+input_extension: "abc"
+output_extension: "mid"
+output_dir: "/network/scratch/m/mina.beiramy/bgpt_shared/models/abc-to-midi-20240508/inference"
+model_weights_path: "/network/scratch/m/mina.beiramy/bgpt_shared/models/abc-to-midi-20240508/checkpoints/latest.pth"
+num_samples: null
+top_k: 3
+top_p: 3
+temperature: 0.1
+patch_size: 16
+patch_length: 512
+byte_num_layers: 3
+patch_num_layers: 12
+hidden_size: 768

@@ -13,7 +13,7 @@
 SRC_DIR="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt"
 
 # Change to config YAML path
-CONFIG_PATH="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt/configs/config_110M_abcmidi.yaml"
+CONFIG_PATH="/home/mila/j/jonathan.lim/cerc/byte_models/bgpt/configs/config_110M_inference_mila.yaml"
 
 NUM_NODES=1
 NUM_GPUS_PER_NODE=1
@@ -30,4 +30,4 @@ export WANDB_API_KEY=$(awk '/api_key/ {print $3}' /home/mila/j/jonathan.lim/.wan
 # export MASTER_PORT=$((((RANDOM<<15)|RANDOM)%63001+2001))
 
 # srun torchrun --nnodes=${NUM_NODES} --nproc_per_node=${NUM_GPUS_PER_NODE} --rdzv_id=$SLURM_JOB_ID --rdzv_backend=c10d --rdzv_endpoint=$MASTER_IP:29401 train-gen-distributed.py --train-config-path ${CONFIG_PATH}
-python train-gen-distributed.py --train-config-path ${CONFIG_PATH}
+python inference.py --config-path ${CONFIG_PATH}
